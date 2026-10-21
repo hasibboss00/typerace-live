@@ -88,19 +88,19 @@
 <div class="wrap">
   <header>
     <div class="logo">🏎️ Type<span class="red">Race</span> <span class="green">Live</span></div>
-    <div class="tagline">1 minute. Same text. 2 racers. Fastest fingers win the trophy 🏆</div>
+    <div class="tagline">2-player typing race — fastest in 1 minute wins 🏆</div>
   </header>
 
   <!-- HOME -->
   <section id="screen-home" class="screen active">
     <div class="card">
-      <h2>🚦 Race shuru kori?</h2>
-      <p class="sub">Friend er sathe live race koro — duijoneri kache <b>ekoi text</b> jabe, 60 second time. Je beshi fast ar correct type korbe, tar gar-i finish line age par hobe!</p>
-      <label>Tomar naam</label>
+      <h2>🚦 Start a Race</h2>
+      <p class="sub">Both players get the <b>same text</b>. Type fast and accurately for 60 seconds — the best typist wins.</p>
+      <label>Your name</label>
       <input type="text" id="playerName" placeholder="e.g. Hasib" maxlength="16">
       <button class="btn btn-red" id="btnCreate">🏠 Create Room (Host)</button>
       <div class="or">— OR —</div>
-      <label>Friend er room code</label>
+      <label>Room code</label>
       <input type="text" id="joinCode" placeholder="e.g. K7X2P9" maxlength="6" style="text-transform:uppercase">
       <button class="btn btn-blue" id="btnJoin">🚗 Join Room</button>
       <div class="or">— PRACTICE —</div>
@@ -113,7 +113,7 @@
   <section id="screen-lobby" class="screen">
     <div class="card">
       <h2>🏁 Race Lobby</h2>
-      <p class="sub">Ei code ta friend ke dao, se Join Room e code bosiye dhukbe. Duijon ready hole host race start korbe.<br>⚠️ <b>Ei screen ta khola rakho</b> — tab close/baire gele room hariye jabe, friend tokhon "room pawa jay nai" dekhbe.</p>
+      <p class="sub">Share this code with your friend. <b>Keep this tab open</b> — closing it ends the room.</p>
       <div class="code-big" id="lobbyCode">------</div>
       <div class="row">
         <button class="btn btn-ghost" id="btnCopyCode">📋 Code Copy</button>
@@ -121,10 +121,10 @@
       </div>
       <div class="players">
         <div class="player-slot" id="slotYou"><span class="car">🔴🏎️</span><span class="pname">You</span></div>
-        <div class="player-slot empty" id="slotOpp"><span class="car">⏳</span><span class="pname">Friend er jonno wait...</span></div>
+        <div class="player-slot empty" id="slotOpp"><span class="car">⏳</span><span class="pname">Waiting for friend...</span></div>
       </div>
       <button class="btn btn-green" id="btnStart" disabled>▶ Start Race</button>
-      <button class="btn btn-ghost" id="btnLeaveLobby">⬅ Charo / Leave</button>
+      <button class="btn btn-ghost" id="btnLeaveLobby">⬅ Leave</button>
       <div class="status" id="lobbyStatus"></div>
     </div>
   </section>
@@ -154,7 +154,7 @@
       </div>
       <div class="timer-wrap"><div class="timer-bar" id="timerBar"></div></div>
       <div id="raceText"></div>
-      <textarea id="typingInput" rows="2" placeholder="Countdown shesh hole ekhane type koro..." autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
+      <textarea id="typingInput" rows="2" placeholder="Type here after the countdown..." autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
       <div class="status" id="raceStatus"></div>
     </div>
   </section>
@@ -176,7 +176,7 @@
     </div>
   </section>
 
-  <footer>Made with ❤️ — TypeRace Live • Every race = a brand new text • No sign-up needed</footer>
+  <footer>Made by Fayzur Rahman Hasib</footer>
 </div>
 <div id="countdown"></div>
 <div class="toast" id="toast"></div>
@@ -217,8 +217,8 @@ function pickText(){
 }
 
 /* ================= STATE =================
-   Transport v2: MQTT over secure WebSocket (public broker).
-   P2P/WebRTC BD mobile network e atke jeto — WSS shob jaygay chole. */
+   Transport: MQTT over secure WebSocket (public brokers) — works on
+   mobile networks where P2P/WebRTC gets blocked. */
 const TOPIC_PREFIX = "typerace-live-v2";
 const MQ_BROKERS = [
   "wss://broker.emqx.io:8084/mqtt",
@@ -275,9 +275,9 @@ function sendMsg(obj){
 }
 
 /* ================= NETWORK (lazy-loaded MQTT, dual parallel servers) =================
-   Library click er pore load hoy (page instant khule), eki sathe 2 server e
-   connect kore — jeta age connect hobe sheta diyei kaj. Host 2 server-ei
-   thake, tai guest jekono ekta diyei host ke peye jay. */
+   The library loads lazily on click (instant page load) and connects to
+   2 servers in parallel — whichever connects first wins. The host is on
+   both servers, so the guest can reach it through either one. */
 let mqttLibPromise = null;
 function loadMqtt(){
   if(window.mqtt) return Promise.resolve();
@@ -338,13 +338,13 @@ function startNet(cb){
     setTimeout(()=>{ if(!state.netUp && state.conns.length) connectBroker(3); }, 15000);
     setTimeout(()=>{
       if(!state.netUp && state.conns.length){
-        if(state.mode==="guest") $("homeStatus").textContent = "Server e connect hote parlo na 😕 Internet check kore abar try koro.";
-        if(state.mode==="host") $("lobbyStatus").textContent = "Server e connect hote parlo na 😕 Internet check kore page reload dao.";
+        if(state.mode==="guest") $("homeStatus").textContent = "Could not connect to the server. Check your internet and try again.";
+        if(state.mode==="host") $("lobbyStatus").textContent = "Could not connect to the server. Check your internet and reload.";
       }
     }, 22000);
   }).catch(()=>{
-    if(state.mode==="host") $("lobbyStatus").textContent = "Library load hote parlo na 😕 Internet check kore reload dao.";
-    else $("homeStatus").textContent = "Library load hote parlo na 😕 Internet check kore abar try koro.";
+    if(state.mode==="host") $("lobbyStatus").textContent = "Failed to load. Check your internet and reload.";
+    else $("homeStatus").textContent = "Failed to load. Check your internet and try again.";
   });
 }
 function closeConns(){
@@ -353,7 +353,7 @@ function closeConns(){
 }
 function onPresence(raw){
   if(state.isHost) return;
-  if(!raw){ // host chole geche
+  if(!raw){ // host left
     if(!state.racing && state.inLobby) onOppLeft();
     return;
   }
@@ -362,7 +362,7 @@ function onPresence(raw){
   state.presenceSeen = true;
   state.oppName = p.name || "Host";
   sendMsg({type:"join", name: state.myName});
-  $("homeStatus").textContent = "Room pawa geche ✅ Host er sathe connect hocche...";
+  $("homeStatus").textContent = "Room found ✅ Connecting to host...";
 }
 
 /* ================= HOST ================= */
@@ -373,44 +373,44 @@ function createRoom(){
   $("lobbyCode").textContent = state.roomCode;
   $("slotYou").querySelector(".pname").textContent = state.myName + " (Host) 👑";
   $("slotOpp").className = "player-slot empty";
-  $("slotOpp").innerHTML = '<span class="car">⏳</span><span class="pname">Friend er jonno wait...</span>';
+  $("slotOpp").innerHTML = '<span class="car">⏳</span><span class="pname">Waiting for friend...</span>';
   $("btnStart").disabled = true;
-  $("lobbyStatus").textContent = "Server e connect hocche ⏳ — code ta ekhon e share kore dao!";
+  $("lobbyStatus").textContent = "Connecting to server… you can share the code now!";
   showScreen("lobby");
   history.replaceState(null,"","?room="+state.roomCode);
   startNet(()=>{
-    if(!state.oppJoined) $("lobbyStatus").textContent = "Server ready ✅ Friend join korlei Start button active hobe";
+    if(!state.oppJoined) $("lobbyStatus").textContent = "Server ready ✅ Waiting for your friend to join";
   });
 }
 
 /* ================= GUEST ================= */
 function joinRoom(code){
   code = (code||"").trim().toUpperCase();
-  if(code.length!==6){ toast("6 character er code dao ⚠️"); return; }
+  if(code.length!==6){ toast("Enter the 6-character code ⚠️"); return; }
   state.myName = myName(); state.isHost = false; state.mode = "guest";
   state.roomCode = code; state.brokerIdx = 0;
   state.presenceSeen = false; state.oppJoined = false; state.inLobby = false;
   const attempt = ++state.joinAttempt;
-  $("homeStatus").textContent = "Room khujchi...";
+  $("homeStatus").textContent = "Finding room...";
   closeConns();
   startNet(null);
   setTimeout(()=>{
     if(state.joinAttempt!==attempt || state.oppJoined) return;
     if(!state.presenceSeen){
-      $("homeStatus").textContent = "Ei code e kono live room pawa jay nai 😕 Host room baniye lobby screen khola rekheche kina check koro, code ta abar dekhe nao.";
+      $("homeStatus").textContent = "No live room found for this code. Check the code and make sure the host is waiting in the lobby.";
     }
   }, 14000);
   setTimeout(()=>{
     if(state.joinAttempt!==attempt || state.oppJoined) return;
     if(state.presenceSeen){ // room ache, host reply dicche na — join abar pathai
       sendMsg({type:"join", name: state.myName});
-      $("homeStatus").textContent = "Room ache, host er reply er wait... abar try hocche ⏳";
+      $("homeStatus").textContent = "Room found — waiting for the host, retrying…";
     }
   }, 18000);
   setTimeout(()=>{
     if(state.joinAttempt!==attempt || state.oppJoined) return;
     if(state.presenceSeen){
-      $("homeStatus").textContent = "Connect hote parlo na 😕 Host ke bolo notun room banate, tarpor notun code diye abar join koro.";
+      $("homeStatus").textContent = "Could not connect. Ask the host to create a new room, then join with the new code.";
     }
   }, 30000);
 }
@@ -430,8 +430,8 @@ function handleData(d){
       $("slotOpp").innerHTML = '<span class="car">🔵🏎️</span><span class="pname"></span>';
       $("slotOpp").querySelector(".pname").textContent = state.oppName;
       $("btnStart").disabled = false;
-      $("lobbyStatus").textContent = state.oppName + " join koreche! Ekhon Start dao 🎉";
-      toast(state.oppName + " join koreche! 🎉");
+      $("lobbyStatus").textContent = state.oppName + " joined! Press Start 🎉";
+      toast(state.oppName + " joined! 🎉");
     }
     sendMsg({type:"welcome", name: state.myName});
   }
@@ -448,7 +448,7 @@ function handleData(d){
     renderOpp(); maybeShowResult();
   }
   if(d.type==="rematch_request"){
-    toast(state.oppName + " rematch chaiche! 🔁");
+    toast(state.oppName + " wants a rematch! 🔁");
     if(state.isHost) hostStartRace();
   }
   if(d.type==="leave"){ if(!state.racing) onOppLeft(); else endRace(true); }
@@ -461,14 +461,14 @@ function enterLobbyGuest(){
   $("slotOpp").innerHTML = '<span class="car">👑🏎️</span><span class="pname"></span>';
   $("slotOpp").querySelector(".pname").textContent = state.oppName + " (Host)";
   $("btnStart").disabled = true;
-  $("lobbyStatus").textContent = "Host race start korar wait korcho... ⏳";
+  $("lobbyStatus").textContent = "Waiting for the host to start… ⏳";
   showScreen("lobby");
-  toast("Room e join hoyecho! ✅");
+  toast("You joined the room! ✅");
 }
 function onOppLeft(){
   if(state.racing) { endRace(true); return; }
   state.oppJoined = false; state.inLobby = false;
-  toast("Opponent chole geche 👋");
+  toast("Opponent left 👋");
   if(state.mode!=="bot") showScreen("home");
 }
 
@@ -499,7 +499,7 @@ function startRace(text, startAt){
   $("statTime").textContent = RACE_SECONDS; $("timerBar").style.width = "100%";
   $("raceStatus").textContent = "";
   const inp = $("typingInput"); inp.value = ""; inp.disabled = true;
-  inp.placeholder = "Ready hou...";
+  inp.placeholder = "Get ready…";
   showScreen("race");
   const cd = $("countdown"); cd.classList.add("show");
   const tick = ()=>{
@@ -514,7 +514,7 @@ function startRace(text, startAt){
 }
 function beginTyping(){
   state.racing = true;
-  const inp = $("typingInput"); inp.disabled = false; inp.placeholder = "Type koro ekhane... fast! ⌨️"; inp.focus();
+  const inp = $("typingInput"); inp.disabled = false; inp.placeholder = "Type here… fast! ⌨️"; inp.focus();
   const endAt = state.startAt + RACE_SECONDS*1000;
   clearInterval(state.timerInt);
   state.timerInt = setInterval(()=>{
@@ -543,7 +543,7 @@ $("typingInput").addEventListener("input", e=>{
   if(!state.racing || state.finished) return;
   let v = e.target.value;
   if(v.length > state.text.length) v = v.slice(0, state.text.length);
-  if(v.length - state.typed.length > 3){ v = state.typed; e.target.value = v; toast("Paste/cheat cholbe na 😄 Type korei likho!"); }
+  if(v.length - state.typed.length > 3){ v = state.typed; e.target.value = v; toast("No pasting 😄 Type it yourself!"); }
   state.typed = v; e.target.value = v;
   state.totalTyped = Math.max(state.totalTyped, v.length);
   state.correct = 0;
@@ -555,7 +555,7 @@ $("typingInput").addEventListener("input", e=>{
   renderText(); sendProgress();
   if(v.length >= state.text.length) endRace(false);
 });
-$("typingInput").addEventListener("paste", e=>{ e.preventDefault(); toast("Paste bondho 😄 Haate type koro!"); });
+$("typingInput").addEventListener("paste", e=>{ e.preventDefault(); toast("Paste is disabled 😄"); });
 
 let lastSent = 0;
 function sendProgress(){
@@ -585,7 +585,7 @@ function startBot(){
     if(state.botTyped >= state.text.length){
       state.oppFinal = { ...state.opp };
       clearInterval(state.botInt);
-      $("raceStatus").textContent = "🤖 Bot finish kore feleche! Tumi shesh koro ba time er wait koro...";
+      $("raceStatus").textContent = "🤖 The bot finished! Finish your text or wait for the timer.";
     }
   }, 250);
 }
@@ -621,11 +621,11 @@ function showResult(){
   const tie = me.correct===op.correct && me.acc===op.acc && me.wpm===op.wpm;
   $("resultEmoji").textContent = tie ? "🤝" : (iWin ? "🏆" : "😤");
   $("resultTitle").innerHTML = tie ? "Draw!" : (iWin ? `<span class="crown">${escapeHtml(state.myName)}</span> Wins! 🎉` : `${escapeHtml(state.oppName)} Wins!`);
-  $("resultSub").textContent = tie ? "Duijonei soman fast! Rematch diye dekho ke ashole boss 😎"
-    : iWin ? "Tumi jitla! Tomar angul aj agun 🔥" : "Eibar paroni, rematch e hariye dao! 💪";
+  $("resultSub").textContent = tie ? "Dead heat! Rematch to find the real winner 😎"
+    : iWin ? "You win! Your fingers are on fire 🔥" : "You lose this one — win the rematch! 💪";
   $("rowYou").innerHTML = `<td><b>${escapeHtml(state.myName)}</b> (You) ${iWin && !tie ? "👑":""}</td><td>${me.wpm}</td><td>${me.acc}%</td><td>${me.correct}</td><td>${me.progress}%</td>`;
   $("rowOpp").innerHTML = `<td><b>${escapeHtml(state.oppName)}</b> ${!iWin && !tie ? "👑":""}</td><td>${op.wpm}</td><td>${op.acc}%</td><td>${op.correct}</td><td>${op.progress}%</td>`;
-  $("resultStatus").textContent = state.mode==="guest" ? "Rematch chaile button chapao — host new race start korbe" : "";
+  $("resultStatus").textContent = state.mode==="guest" ? "Tap Rematch — the host will start a new race" : "";
   showScreen("result");
   if(iWin && !tie) confetti();
 }
@@ -663,18 +663,18 @@ $("btnStart").onclick = ()=>{ if(state.oppJoined) hostStartRace(); };
 $("btnLeaveLobby").onclick = ()=>location.href = location.pathname;
 $("btnHome").onclick = ()=>location.href = location.pathname;
 $("btnCopyCode").onclick = ()=>{
-  navigator.clipboard.writeText(state.roomCode||"").then(()=>toast("Code copy hoyeche 📋"));
+  navigator.clipboard.writeText(state.roomCode||"").then(()=>toast("Code copied 📋"));
 };
 $("btnCopyLink").onclick = ()=>{
   const link = location.origin + location.pathname + "?room=" + (state.roomCode||"");
-  navigator.clipboard.writeText(link).then(()=>toast("Invite link copy hoyeche 🔗 Friend ke pathao!"));
+  navigator.clipboard.writeText(link).then(()=>toast("Invite link copied 🔗"));
 };
 $("btnRematch").onclick = ()=>{
   if(state.mode==="bot"){ startBotRace(); }
   else if(state.isHost){ hostStartRace(); }
   else {
     sendMsg({type:"rematch_request"});
-    $("resultStatus").textContent = "Host ke rematch request pathano hoyeche... ⏳";
+    $("resultStatus").textContent = "Rematch request sent to the host… ⏳";
   }
 };
 $("joinCode").addEventListener("keydown", e=>{ if(e.key==="Enter") $("btnJoin").click(); });
@@ -689,7 +689,7 @@ window.addEventListener("beforeunload", ()=>{
 
 (function(){
   const code = new URLSearchParams(location.search).get("room");
-  if(code){ $("joinCode").value = code.toUpperCase(); toast("Invite link theke eshecho! Naam diye Join Room chapao 👇"); }
+  if(code){ $("joinCode").value = code.toUpperCase(); toast("You came from an invite link! Enter your name and tap Join Room 👇"); }
 })();
 </script>
 </body>

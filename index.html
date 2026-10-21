@@ -114,7 +114,7 @@
   <section id="screen-lobby" class="screen">
     <div class="card">
       <h2>🏁 Race Lobby</h2>
-      <p class="sub">Ei code ta friend ke dao, se Join Room e code bosiye dhukbe. Duijon ready hole host race start korbe.</p>
+      <p class="sub">Ei code ta friend ke dao, se Join Room e code bosiye dhukbe. Duijon ready hole host race start korbe.<br>⚠️ <b>Ei screen ta khola rakho</b> — tab close/baire gele room hariye jabe, friend tokhon "room pawa jay nai" dekhbe.</p>
       <div class="code-big" id="lobbyCode">------</div>
       <div class="row">
         <button class="btn btn-ghost" id="btnCopyCode">📋 Code Copy</button>
@@ -219,6 +219,15 @@ function pickText(){
 
 /* ================= STATE ================= */
 const PEER_PREFIX = "typerace-live-v1-";
+/* STUN + free TURN relay — BD mobile networks (CGNAT) direct connection block
+   kore dile TURN diye relay hobe, tai "room pawa jay nai" problem fix hoy */
+const PEER_CONFIG = { debug: 0, config: { iceServers: [
+  { urls: "stun:stun.l.google.com:19302" },
+  { urls: "stun:stun1.l.google.com:19302" },
+  { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" },
+  { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
+  { urls: "turns:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" }
+] } };
 const RACE_SECONDS = 60;
 const $ = id => document.getElementById(id);
 const state = {
@@ -261,7 +270,8 @@ function createRoom(){
   state.myName = myName(); state.isHost = true; state.mode = "host";
   const code = makeCode();
   $("homeStatus").textContent = "Room banano hocche...";
-  state.peer = new Peer(PEER_PREFIX + code);
+  state.peer = new Peer(PEER_PREFIX + code, PEER_CONFIG);
+  state.peer.on("disconnected", ()=>{ try{ state.peer.reconnect(); }catch(e){} });
   state.peer.on("open", ()=>{
     $("lobbyCode").textContent = code;
     $("slotYou").querySelector(".pname").textContent = state.myName + " (Host) 👑";
@@ -286,12 +296,15 @@ function createRoom(){
 }
 
 /* ================= PEER: GUEST ================= */
-function joinRoom(code){
+function joinRoom(code, attempt){
   code = (code||"").trim().toUpperCase();
   if(code.length!==6){ toast("6 character er code dao ⚠️"); return; }
+  attempt = attempt || 1;
+  state.joinAttempt = attempt;
   state.myName = myName(); state.isHost = false; state.mode = "guest"; state.roomCode = code;
-  $("homeStatus").textContent = "Room e join hocche...";
-  state.peer = new Peer();
+  $("homeStatus").textContent = attempt > 1 ? `Abar try hocche (${attempt}/3)...` : "Room e join hocche...";
+  if(state.peer){ try{ state.peer.destroy(); }catch(e){} }
+  state.peer = new Peer(PEER_CONFIG);
   state.peer.on("open", ()=>{
     const conn = state.peer.connect(PEER_PREFIX + code, {reliable:true});
     state.conn = conn;
@@ -300,13 +313,21 @@ function joinRoom(code){
     conn.on("close", ()=>onOppLeft());
     conn.on("error", ()=>{ $("homeStatus").textContent = "Connect hote parlo na — code ta check koro"; });
     setTimeout(()=>{
-      if(!state.oppJoined && state.mode==="guest" && !state.racing){
-        $("homeStatus").textContent = "Room pawa jay nai 😕 Code thik ache to? Host room baniyeche to?";
+      if(!state.oppJoined && state.mode==="guest" && !state.racing && state.joinAttempt===attempt){
+        $("homeStatus").textContent = "Connect hote parlo na 😕 Host ke bolo lobby screen ta khola rakhte (tab close korle room bondho hoye jay), tarpor tumi abar Join chapao. Dujoner-i internet connection lagbe.";
       }
-    }, 7000);
+    }, 15000);
   });
   state.peer.on("error", err=>{
-    if(err.type==="peer-unavailable") $("homeStatus").textContent = "Ei code e kono room nai 😕 Code check kore abar try koro";
+    if(err.type==="peer-unavailable"){
+      if(attempt < 3){
+        $("homeStatus").textContent = "Host ekhono ready na... 3 second por abar try hocche ⏳";
+        state.joinAttempt = attempt + 1;
+        setTimeout(()=>{ if(!state.oppJoined) joinRoom(code, attempt+1); }, 3000);
+      } else {
+        $("homeStatus").textContent = "Ei code e kono live room pawa jay nai 😕 Host room baniye lobby te ache kina check koro, code ta abar dekhe nao.";
+      }
+    }
     else $("homeStatus").textContent = "Connection error: " + err.type;
   });
 }

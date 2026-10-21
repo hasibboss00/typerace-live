@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>TypeRace — 2 Player Typing Racing Game</title>
 <meta name="description" content="Race a friend in a 1-minute typing speed battle. Same text, fastest fingers win!">
-<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   :root{
@@ -217,24 +217,22 @@ function pickText(){
   lastTextIdx = i; return TEXTS[i];
 }
 
-/* ================= STATE ================= */
-const PEER_PREFIX = "typerace-live-v1-";
-/* STUN + free TURN relay — BD mobile networks (CGNAT) direct connection block
-   kore dile TURN diye relay hobe, tai "room pawa jay nai" problem fix hoy */
-const PEER_CONFIG = { debug: 0, config: { iceServers: [
-  { urls: "stun:stun.l.google.com:19302" },
-  { urls: "stun:stun1.l.google.com:19302" },
-  { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" },
-  { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
-  { urls: "turns:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" }
-] } };
+/* ================= STATE =================
+   Transport v2: MQTT over secure WebSocket (public broker).
+   P2P/WebRTC BD mobile network e atke jeto — WSS shob jaygay chole. */
+const TOPIC_PREFIX = "typerace-live-v2";
+const MQ_BROKERS = [
+  "wss://broker.emqx.io:8084/mqtt",
+  "wss://broker.hivemq.com:8884/mqtt",
+  "wss://test.mosquitto.org:8081/mqtt"
+];
 const RACE_SECONDS = 60;
 const $ = id => document.getElementById(id);
 const state = {
-  mode: null,            // 'host' | 'guest' | 'bot'
-  peer: null, conn: null,
+  mode: null, mq: null, brokerIdx: 0, roomCode: "",
   myName: "Player", oppName: "Opponent",
-  isHost: false, oppJoined: false,
+  isHost: false, oppJoined: false, inLobby: false,
+  presenceSeen: false, joinAttempt: 0,
   text: "", typed: "", correct: 0, totalTyped: 0,
   racing: false, finished: false,
   startAt: 0, timerInt: null, botInt: null,
@@ -242,6 +240,9 @@ const state = {
   myFinal: null, oppFinal: null, resultShown: false,
   botWpm: 45, botTyped: 0
 };
+const hostTopic    = () => `${TOPIC_PREFIX}/${state.roomCode}/to-host`;
+const guestTopic   = () => `${TOPIC_PREFIX}/${state.roomCode}/to-guest`;
+const presenceTopic= () => `${TOPIC_PREFIX}/${state.roomCode}/presence`;
 
 function toast(msg, ms=2600){
   const t = $("toast"); t.textContent = msg; t.classList.add("show");
@@ -264,89 +265,152 @@ function stats(){
   return { wpm: Math.min(wpm, 250), acc, correct: state.correct,
            progress: Math.round(state.typed.length/state.text.length*100) || 0 };
 }
+function sendMsg(obj){
+  if(state.mode==="bot" || !state.mq || !state.mq.connected) return;
+  const topic = state.isHost ? guestTopic() : hostTopic();
+  try{ state.mq.publish(topic, JSON.stringify(obj), {qos:1}); }catch(e){}
+}
 
-/* ================= PEER: HOST ================= */
+/* ================= MQTT CONNECTION ================= */
+function mqConnect(onReady){
+  const url = MQ_BROKERS[state.brokerIdx];
+  const opts = { clientId: "tr" + Math.random().toString(36).slice(2,13),
+    reconnectPeriod: 2500, connectTimeout: 12000, keepalive: 30, clean: true };
+  if(state.isHost){
+    /* Stable clientId + persistent session: host app switch kore code pathate
+       gelo, ferot ashle broker queued join message diye dey — room more na */
+    opts.clientId = "trh-" + state.roomCode;
+    opts.clean = false;
+    opts.protocolVersion = 5;
+    opts.properties = { sessionExpiryInterval: 3600 };
+    opts.will = { topic: presenceTopic(), payload: "", retain: true, qos: 1 };
+  }
+  const client = mqtt.connect(url, opts);
+  state.mq = client;
+  let ready = false;
+  client.on("connect", ()=>{
+    if(state.isHost){
+      client.subscribe(hostTopic(), {qos:1});
+      client.publish(presenceTopic(), JSON.stringify({name: state.myName}), {retain:true, qos:1});
+    } else {
+      client.subscribe([guestTopic(), presenceTopic()], {qos:1});
+    }
+    if(!ready){ ready = true; if(onReady) onReady(); }
+  });
+  client.on("message", (topic, payload)=>{
+    const raw = payload.toString();
+    if(topic === presenceTopic()){ onPresence(raw); return; }
+    if(!raw) return;
+    let d; try{ d = JSON.parse(raw); }catch(e){ return; }
+    handleData(d);
+  });
+  client.on("error", ()=>{});
+  setTimeout(()=>{
+    if(!ready && state.mq === client){
+      if(state.brokerIdx < MQ_BROKERS.length-1){
+        state.brokerIdx++;
+        try{ client.end(true); }catch(e){}
+        mqConnect(onReady);
+      } else if(state.mode==="guest" && !state.oppJoined){
+        $("homeStatus").textContent = "Server e connect hote parlo na 😕 Internet check kore abar try koro.";
+      } else if(state.mode==="host" && !state.inLobby){
+        $("homeStatus").textContent = "Server e connect hote parlo na 😕 Internet check kore abar Create Room chapao.";
+      }
+    }
+  }, 13000);
+}
+function onPresence(raw){
+  if(state.isHost) return;
+  if(!raw){ // host chole geche
+    if(!state.racing && state.inLobby) onOppLeft();
+    return;
+  }
+  let p; try{ p = JSON.parse(raw); }catch(e){ return; }
+  state.oppName = p.name || "Host";
+  if(state.presenceSeen && !state.oppJoined){
+    // host ferot esheche — ageer join hoyto hariye geche, abar pathai
+    if(Date.now() - (state.lastJoinSent||0) > 4000){
+      state.lastJoinSent = Date.now();
+      sendMsg({type:"join", name: state.myName});
+    }
+    return;
+  }
+  if(state.presenceSeen) return;
+  state.presenceSeen = true;
+  state.lastJoinSent = Date.now();
+  sendMsg({type:"join", name: state.myName});
+  $("homeStatus").textContent = "Room pawa geche ✅ Host er sathe connect hocche...";
+}
+
+/* ================= HOST ================= */
 function createRoom(){
   state.myName = myName(); state.isHost = true; state.mode = "host";
-  const code = makeCode();
+  state.roomCode = makeCode(); state.brokerIdx = 0; state.inLobby = false;
   $("homeStatus").textContent = "Room banano hocche...";
-  state.peer = new Peer(PEER_PREFIX + code, PEER_CONFIG);
-  state.peer.on("disconnected", ()=>{ try{ state.peer.reconnect(); }catch(e){} });
-  state.peer.on("open", ()=>{
-    $("lobbyCode").textContent = code;
+  mqConnect(()=>{
+    state.inLobby = true;
+    $("lobbyCode").textContent = state.roomCode;
     $("slotYou").querySelector(".pname").textContent = state.myName + " (Host) 👑";
     $("slotOpp").className = "player-slot empty";
     $("slotOpp").innerHTML = '<span class="car">⏳</span><span class="pname">Friend er jonno wait...</span>';
     $("btnStart").disabled = true;
     $("lobbyStatus").textContent = "Friend join korlei Start button active hobe";
-    state.roomCode = code;
     showScreen("lobby");
-    history.replaceState(null,"","?room="+code);
-  });
-  state.peer.on("connection", conn=>{
-    state.conn = conn;
-    conn.on("data", d=>handleData(d));
-    conn.on("open", ()=>{ conn.send({type:"welcome", name: state.myName}); });
-    conn.on("close", ()=>onOppLeft());
-  });
-  state.peer.on("error", err=>{
-    if(err.type==="unavailable-id"){ createRoom(); }
-    else { $("homeStatus").textContent = "Connection error: " + err.type + " — abar try koro"; }
+    history.replaceState(null,"","?room="+state.roomCode);
   });
 }
 
-/* ================= PEER: GUEST ================= */
-function joinRoom(code, attempt){
+/* ================= GUEST ================= */
+function joinRoom(code){
   code = (code||"").trim().toUpperCase();
   if(code.length!==6){ toast("6 character er code dao ⚠️"); return; }
-  attempt = attempt || 1;
-  state.joinAttempt = attempt;
-  state.myName = myName(); state.isHost = false; state.mode = "guest"; state.roomCode = code;
-  $("homeStatus").textContent = attempt > 1 ? `Abar try hocche (${attempt}/3)...` : "Room e join hocche...";
-  if(state.peer){ try{ state.peer.destroy(); }catch(e){} }
-  state.peer = new Peer(PEER_CONFIG);
-  state.peer.on("open", ()=>{
-    const conn = state.peer.connect(PEER_PREFIX + code, {reliable:true});
-    state.conn = conn;
-    conn.on("open", ()=>{ conn.send({type:"join", name: state.myName}); });
-    conn.on("data", d=>handleData(d));
-    conn.on("close", ()=>onOppLeft());
-    conn.on("error", ()=>{ $("homeStatus").textContent = "Connect hote parlo na — code ta check koro"; });
-    setTimeout(()=>{
-      if(!state.oppJoined && state.mode==="guest" && !state.racing && state.joinAttempt===attempt){
-        $("homeStatus").textContent = "Connect hote parlo na 😕 Host ke bolo lobby screen ta khola rakhte (tab close korle room bondho hoye jay), tarpor tumi abar Join chapao. Dujoner-i internet connection lagbe.";
-      }
-    }, 15000);
-  });
-  state.peer.on("error", err=>{
-    if(err.type==="peer-unavailable"){
-      if(attempt < 3){
-        $("homeStatus").textContent = "Host ekhono ready na... 3 second por abar try hocche ⏳";
-        state.joinAttempt = attempt + 1;
-        setTimeout(()=>{ if(!state.oppJoined) joinRoom(code, attempt+1); }, 3000);
-      } else {
-        $("homeStatus").textContent = "Ei code e kono live room pawa jay nai 😕 Host room baniye lobby te ache kina check koro, code ta abar dekhe nao.";
-      }
+  state.myName = myName(); state.isHost = false; state.mode = "guest";
+  state.roomCode = code; state.brokerIdx = 0;
+  state.presenceSeen = false; state.oppJoined = false; state.inLobby = false;
+  const attempt = ++state.joinAttempt;
+  $("homeStatus").textContent = "Room khujchi...";
+  if(state.mq){ try{ state.mq.end(true); }catch(e){} state.mq = null; }
+  mqConnect(null);
+  setTimeout(()=>{
+    if(state.joinAttempt!==attempt || state.oppJoined) return;
+    if(!state.presenceSeen){
+      $("homeStatus").textContent = "Ei code e kono live room pawa jay nai 😕 Host room baniye lobby screen khola rekheche kina check koro, code ta abar dekhe nao.";
     }
-    else $("homeStatus").textContent = "Connection error: " + err.type;
-  });
+  }, 10000);
+  setTimeout(()=>{
+    if(state.joinAttempt!==attempt || state.oppJoined) return;
+    if(state.presenceSeen){ // room ache, host reply dicche na — join abar pathai
+      sendMsg({type:"join", name: state.myName});
+      $("homeStatus").textContent = "Room ache, host er reply er wait... abar try hocche ⏳";
+    }
+  }, 14000);
+  setTimeout(()=>{
+    if(state.joinAttempt!==attempt || state.oppJoined) return;
+    if(state.presenceSeen){
+      $("homeStatus").textContent = "Connect hote parlo na 😕 Host ke bolo notun room banate, tarpor notun code diye abar join koro.";
+    }
+  }, 24000);
 }
 
 function handleData(d){
   if(!d || !d.type) return;
-  if(d.type==="welcome"){ // guest receives host name
+  if(d.type==="welcome"){
+    if(state.oppJoined) return;
     state.oppName = d.name; state.oppJoined = true;
     enterLobbyGuest();
   }
-  if(d.type==="join"){ // host receives guest
-    state.oppName = d.name; state.oppJoined = true;
-    $("slotOpp").className = "player-slot";
-    $("slotOpp").innerHTML = '<span class="car">🔵🏎️</span><span class="pname"></span>';
-    $("slotOpp").querySelector(".pname").textContent = state.oppName;
-    $("btnStart").disabled = false;
-    $("lobbyStatus").textContent = state.oppName + " join koreche! Ekhon Start dao 🎉";
-    toast(state.oppName + " join koreche! 🎉");
-    if(state.conn) state.conn.send({type:"welcome", name: state.myName});
+  if(d.type==="join"){
+    state.oppName = d.name;
+    if(!state.oppJoined){
+      state.oppJoined = true;
+      $("slotOpp").className = "player-slot";
+      $("slotOpp").innerHTML = '<span class="car">🔵🏎️</span><span class="pname"></span>';
+      $("slotOpp").querySelector(".pname").textContent = state.oppName;
+      $("btnStart").disabled = false;
+      $("lobbyStatus").textContent = state.oppName + " join koreche! Ekhon Start dao 🎉";
+      toast(state.oppName + " join koreche! 🎉");
+    }
+    sendMsg({type:"welcome", name: state.myName});
   }
   if(d.type==="race_start"){ startRace(d.text, d.startAt); }
   if(d.type==="progress"){
@@ -361,9 +425,10 @@ function handleData(d){
     toast(state.oppName + " rematch chaiche! 🔁");
     if(state.isHost) hostStartRace();
   }
-  if(d.type==="leave"){ onOppLeft(); }
+  if(d.type==="leave"){ if(!state.racing) onOppLeft(); else endRace(true); }
 }
 function enterLobbyGuest(){
+  state.inLobby = true;
   $("lobbyCode").textContent = state.roomCode;
   $("slotYou").querySelector(".pname").textContent = state.myName;
   $("slotOpp").className = "player-slot";
@@ -375,8 +440,8 @@ function enterLobbyGuest(){
   toast("Room e join hoyecho! ✅");
 }
 function onOppLeft(){
-  if(state.racing) endRace(true);
-  state.oppJoined = false;
+  if(state.racing) { endRace(true); return; }
+  state.oppJoined = false; state.inLobby = false;
   toast("Opponent chole geche 👋");
   if(state.mode!=="bot") showScreen("home");
 }
@@ -385,17 +450,17 @@ function onOppLeft(){
 function hostStartRace(){
   const text = pickText();
   const startAt = Date.now() + 4000;
-  if(state.conn) state.conn.send({type:"race_start", text, startAt});
+  sendMsg({type:"race_start", text, startAt});
   startRace(text, startAt);
 }
 function startBotRace(){
   state.mode = "bot"; state.isHost = true; state.oppJoined = true;
   state.myName = myName(); state.oppName = "Robo Racer 🤖";
-  state.botWpm = 36 + Math.floor(Math.random()*26); // 36-61 WPM bot
+  state.botWpm = 36 + Math.floor(Math.random()*26);
   startRace(pickText(), Date.now()+4000);
 }
 function startRace(text, startAt){
-  state.text = text; state.startAt = startAt;
+  state.text = text; state.startAt = startAt; state.inLobby = false;
   state.typed = ""; state.correct = 0; state.totalTyped = 0;
   state.racing = false; state.finished = false; state.resultShown = false;
   state.myFinal = null; state.oppFinal = null; state.botTyped = 0;
@@ -410,7 +475,6 @@ function startRace(text, startAt){
   const inp = $("typingInput"); inp.value = ""; inp.disabled = true;
   inp.placeholder = "Ready hou...";
   showScreen("race");
-  // countdown
   const cd = $("countdown"); cd.classList.add("show");
   const tick = ()=>{
     const left = Math.ceil((startAt - Date.now())/1000);
@@ -453,7 +517,6 @@ $("typingInput").addEventListener("input", e=>{
   if(!state.racing || state.finished) return;
   let v = e.target.value;
   if(v.length > state.text.length) v = v.slice(0, state.text.length);
-  // block pasting big chunks
   if(v.length - state.typed.length > 3){ v = state.typed; e.target.value = v; toast("Paste/cheat cholbe na 😄 Type korei likho!"); }
   state.typed = v; e.target.value = v;
   state.totalTyped = Math.max(state.totalTyped, v.length);
@@ -470,10 +533,10 @@ $("typingInput").addEventListener("paste", e=>{ e.preventDefault(); toast("Paste
 
 let lastSent = 0;
 function sendProgress(){
-  if(state.mode==="bot" || !state.conn || !state.conn.open) return;
+  if(state.mode==="bot" || !state.mq) return;
   const now = Date.now(); if(now - lastSent < 120 && state.racing) return; lastSent = now;
   const s = stats();
-  state.conn.send({type:"progress", progress:s.progress, wpm:s.wpm, acc:s.acc, correct:s.correct});
+  sendMsg({type:"progress", progress:s.progress, wpm:s.wpm, acc:s.acc, correct:s.correct});
 }
 function renderOpp(){
   $("carOpp").style.left = `calc(${state.opp.progress}% - ${state.opp.progress*0.36}px)`;
@@ -509,8 +572,7 @@ function endRace(oppLeft){
   $("typingInput").disabled = true;
   const s = stats();
   state.myFinal = s;
-  if(state.mode!=="bot" && state.conn && state.conn.open)
-    state.conn.send({type:"finished", stats:s});
+  if(state.mode!=="bot") sendMsg({type:"finished", stats:s});
   if(state.mode==="bot" && !state.oppFinal)
     state.oppFinal = { progress: state.opp.progress, wpm: state.opp.wpm, acc: 94, correct: state.opp.correct };
   if(oppLeft) state.oppFinal = state.oppFinal || { progress: state.opp.progress, wpm: state.opp.wpm, acc: state.opp.acc, correct: state.opp.correct };
@@ -518,7 +580,7 @@ function endRace(oppLeft){
 }
 function maybeShowResult(){
   if(state.resultShown || !state.finished) return;
-  if(!state.oppFinal) { // rival still finishing — use last known progress
+  if(!state.oppFinal) {
     state.oppFinal = { progress: state.opp.progress, wpm: state.opp.wpm, acc: state.opp.acc, correct: state.opp.correct };
   }
   showResult();
@@ -584,17 +646,21 @@ $("btnCopyLink").onclick = ()=>{
 $("btnRematch").onclick = ()=>{
   if(state.mode==="bot"){ startBotRace(); }
   else if(state.isHost){ hostStartRace(); }
-  else if(state.conn && state.conn.open){
-    state.conn.send({type:"rematch_request"});
+  else {
+    sendMsg({type:"rematch_request"});
     $("resultStatus").textContent = "Host ke rematch request pathano hoyeche... ⏳";
   }
 };
 $("joinCode").addEventListener("keydown", e=>{ if(e.key==="Enter") $("btnJoin").click(); });
 window.addEventListener("beforeunload", ()=>{
-  if(state.conn && state.conn.open) try{ state.conn.send({type:"leave"}); }catch(e){}
+  if(state.mq && state.mq.connected){
+    try{
+      sendMsg({type:"leave"});
+      if(state.isHost) state.mq.publish(presenceTopic(), "", {retain:true, qos:1});
+    }catch(e){}
+  }
 });
 
-// Auto-join from invite link ?room=CODE
 (function(){
   const code = new URLSearchParams(location.search).get("room");
   if(code){ $("joinCode").value = code.toUpperCase(); toast("Invite link theke eshecho! Naam diye Join Room chapao 👇"); }

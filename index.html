@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>TypeRace — 2 Player Typing Racing Game</title>
 <meta name="description" content="Race a friend in a 1-minute typing speed battle. Same text, fastest fingers win!">
-<script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   :root{
@@ -222,15 +221,15 @@ function pickText(){
    P2P/WebRTC BD mobile network e atke jeto — WSS shob jaygay chole. */
 const TOPIC_PREFIX = "typerace-live-v2";
 const MQ_BROKERS = [
-  "wss://mqtt.eclipseprojects.io:443/mqtt",
   "wss://broker.emqx.io:8084/mqtt",
+  "wss://mqtt.eclipseprojects.io:443/mqtt",
   "wss://broker.hivemq.com:8884/mqtt",
   "wss://test.mosquitto.org:8081/mqtt"
 ];
 const RACE_SECONDS = 60;
 const $ = id => document.getElementById(id);
 const state = {
-  mode: null, mq: null, brokerIdx: 0, roomCode: "",
+  mode: null, conns: [], roomCode: "", netUp: false,
   myName: "Player", oppName: "Opponent",
   isHost: false, oppJoined: false, inLobby: false,
   presenceSeen: false, joinAttempt: 0,
@@ -267,37 +266,61 @@ function stats(){
            progress: Math.round(state.typed.length/state.text.length*100) || 0 };
 }
 function sendMsg(obj){
-  if(state.mode==="bot" || !state.mq || !state.mq.connected) return;
+  if(state.mode==="bot") return;
   const topic = state.isHost ? guestTopic() : hostTopic();
-  try{ state.mq.publish(topic, JSON.stringify(obj), {qos:1}); }catch(e){}
+  const data = JSON.stringify(obj);
+  state.conns.forEach(c=>{
+    if(c.up){ try{ c.client.publish(topic, data, {qos:1}); }catch(e){} }
+  });
 }
 
-/* ================= MQTT CONNECTION ================= */
-function mqConnect(onReady){
-  const url = MQ_BROKERS[state.brokerIdx];
+/* ================= NETWORK (lazy-loaded MQTT, dual parallel servers) =================
+   Library click er pore load hoy (page instant khule), eki sathe 2 server e
+   connect kore — jeta age connect hobe sheta diyei kaj. Host 2 server-ei
+   thake, tai guest jekono ekta diyei host ke peye jay. */
+let mqttLibPromise = null;
+function loadMqtt(){
+  if(window.mqtt) return Promise.resolve();
+  if(mqttLibPromise) return mqttLibPromise;
+  const urls = ["https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js",
+                "https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"];
+  mqttLibPromise = new Promise((resolve, reject)=>{
+    const tryUrl = i=>{
+      if(i >= urls.length) return reject(new Error("mqtt lib load failed"));
+      const s = document.createElement("script");
+      s.src = urls[i]; s.onload = ()=>resolve(); s.onerror = ()=>tryUrl(i+1);
+      document.head.appendChild(s);
+    };
+    tryUrl(0);
+  });
+  return mqttLibPromise;
+}
+let onNetUp = null;
+function connectBroker(idx){
   const opts = { clientId: "tr" + Math.random().toString(36).slice(2,13),
-    reconnectPeriod: 2500, connectTimeout: 12000, keepalive: 30, clean: true };
+    reconnectPeriod: 2500, connectTimeout: 6000, keepalive: 30, clean: true };
   if(state.isHost){
-    /* Stable clientId + persistent session: host app switch kore code pathate
-       gelo, ferot ashle broker queued join message diye dey — room more na */
-    opts.clientId = "trh-" + state.roomCode;
+    opts.clientId = "trh-" + state.roomCode + "-" + idx;
     opts.clean = false;
     opts.protocolVersion = 5;
     opts.properties = { sessionExpiryInterval: 3600 };
     opts.will = { topic: presenceTopic(), payload: "", retain: true, qos: 1 };
   }
-  const client = mqtt.connect(url, opts);
-  state.mq = client;
-  let ready = false;
+  const client = mqtt.connect(MQ_BROKERS[idx], opts);
+  const conn = { client, idx, up: false };
+  state.conns.push(conn);
   client.on("connect", ()=>{
+    conn.up = true;
     if(state.isHost){
       client.subscribe(hostTopic(), {qos:1});
       client.publish(presenceTopic(), JSON.stringify({name: state.myName}), {retain:true, qos:1});
     } else {
       client.subscribe([guestTopic(), presenceTopic()], {qos:1});
     }
-    if(!ready){ ready = true; if(onReady) onReady(); }
+    if(!state.netUp){ state.netUp = true; if(onNetUp) onNetUp(); }
   });
+  client.on("close", ()=>{ conn.up = false; });
+  client.on("offline", ()=>{ conn.up = false; });
   client.on("message", (topic, payload)=>{
     const raw = payload.toString();
     if(topic === presenceTopic()){ onPresence(raw); return; }
@@ -306,19 +329,27 @@ function mqConnect(onReady){
     handleData(d);
   });
   client.on("error", ()=>{});
-  setTimeout(()=>{
-    if(!ready && state.mq === client){
-      if(state.brokerIdx < MQ_BROKERS.length-1){
-        state.brokerIdx++;
-        try{ client.end(true); }catch(e){}
-        mqConnect(onReady);
-      } else if(state.mode==="guest" && !state.oppJoined){
-        $("homeStatus").textContent = "Server e connect hote parlo na 😕 Internet check kore abar try koro.";
-      } else if(state.mode==="host" && !state.inLobby){
-        $("homeStatus").textContent = "Server e connect hote parlo na 😕 Internet check kore abar Create Room chapao.";
+}
+function startNet(cb){
+  onNetUp = cb || null;
+  loadMqtt().then(()=>{
+    connectBroker(0); connectBroker(1);
+    setTimeout(()=>{ if(!state.netUp && state.conns.length) connectBroker(2); }, 8000);
+    setTimeout(()=>{ if(!state.netUp && state.conns.length) connectBroker(3); }, 15000);
+    setTimeout(()=>{
+      if(!state.netUp && state.conns.length){
+        if(state.mode==="guest") $("homeStatus").textContent = "Server e connect hote parlo na 😕 Internet check kore abar try koro.";
+        if(state.mode==="host") $("lobbyStatus").textContent = "Server e connect hote parlo na 😕 Internet check kore page reload dao.";
       }
-    }
-  }, 9000);
+    }, 22000);
+  }).catch(()=>{
+    if(state.mode==="host") $("lobbyStatus").textContent = "Library load hote parlo na 😕 Internet check kore reload dao.";
+    else $("homeStatus").textContent = "Library load hote parlo na 😕 Internet check kore abar try koro.";
+  });
+}
+function closeConns(){
+  state.conns.forEach(c=>{ try{ c.client.end(true); }catch(e){} });
+  state.conns = []; state.netUp = false;
 }
 function onPresence(raw){
   if(state.isHost) return;
@@ -327,18 +358,9 @@ function onPresence(raw){
     return;
   }
   let p; try{ p = JSON.parse(raw); }catch(e){ return; }
-  state.oppName = p.name || "Host";
-  if(state.presenceSeen && !state.oppJoined){
-    // host ferot esheche — ageer join hoyto hariye geche, abar pathai
-    if(Date.now() - (state.lastJoinSent||0) > 4000){
-      state.lastJoinSent = Date.now();
-      sendMsg({type:"join", name: state.myName});
-    }
-    return;
-  }
   if(state.presenceSeen) return;
   state.presenceSeen = true;
-  state.lastJoinSent = Date.now();
+  state.oppName = p.name || "Host";
   sendMsg({type:"join", name: state.myName});
   $("homeStatus").textContent = "Room pawa geche ✅ Host er sathe connect hocche...";
 }
@@ -346,18 +368,18 @@ function onPresence(raw){
 /* ================= HOST ================= */
 function createRoom(){
   state.myName = myName(); state.isHost = true; state.mode = "host";
-  state.roomCode = makeCode(); state.brokerIdx = 0; state.inLobby = false;
-  $("homeStatus").textContent = "Room banano hocche...";
-  mqConnect(()=>{
-    state.inLobby = true;
-    $("lobbyCode").textContent = state.roomCode;
-    $("slotYou").querySelector(".pname").textContent = state.myName + " (Host) 👑";
-    $("slotOpp").className = "player-slot empty";
-    $("slotOpp").innerHTML = '<span class="car">⏳</span><span class="pname">Friend er jonno wait...</span>';
-    $("btnStart").disabled = true;
-    $("lobbyStatus").textContent = "Friend join korlei Start button active hobe";
-    showScreen("lobby");
-    history.replaceState(null,"","?room="+state.roomCode);
+  state.roomCode = makeCode(); state.inLobby = true; state.oppJoined = false;
+  closeConns();
+  $("lobbyCode").textContent = state.roomCode;
+  $("slotYou").querySelector(".pname").textContent = state.myName + " (Host) 👑";
+  $("slotOpp").className = "player-slot empty";
+  $("slotOpp").innerHTML = '<span class="car">⏳</span><span class="pname">Friend er jonno wait...</span>';
+  $("btnStart").disabled = true;
+  $("lobbyStatus").textContent = "Server e connect hocche ⏳ — code ta ekhon e share kore dao!";
+  showScreen("lobby");
+  history.replaceState(null,"","?room="+state.roomCode);
+  startNet(()=>{
+    if(!state.oppJoined) $("lobbyStatus").textContent = "Server ready ✅ Friend join korlei Start button active hobe";
   });
 }
 
@@ -370,27 +392,27 @@ function joinRoom(code){
   state.presenceSeen = false; state.oppJoined = false; state.inLobby = false;
   const attempt = ++state.joinAttempt;
   $("homeStatus").textContent = "Room khujchi...";
-  if(state.mq){ try{ state.mq.end(true); }catch(e){} state.mq = null; }
-  mqConnect(null);
+  closeConns();
+  startNet(null);
   setTimeout(()=>{
     if(state.joinAttempt!==attempt || state.oppJoined) return;
     if(!state.presenceSeen){
       $("homeStatus").textContent = "Ei code e kono live room pawa jay nai 😕 Host room baniye lobby screen khola rekheche kina check koro, code ta abar dekhe nao.";
     }
-  }, 10000);
+  }, 14000);
   setTimeout(()=>{
     if(state.joinAttempt!==attempt || state.oppJoined) return;
     if(state.presenceSeen){ // room ache, host reply dicche na — join abar pathai
       sendMsg({type:"join", name: state.myName});
       $("homeStatus").textContent = "Room ache, host er reply er wait... abar try hocche ⏳";
     }
-  }, 14000);
+  }, 18000);
   setTimeout(()=>{
     if(state.joinAttempt!==attempt || state.oppJoined) return;
     if(state.presenceSeen){
       $("homeStatus").textContent = "Connect hote parlo na 😕 Host ke bolo notun room banate, tarpor notun code diye abar join koro.";
     }
-  }, 24000);
+  }, 30000);
 }
 
 function handleData(d){
@@ -413,7 +435,10 @@ function handleData(d){
     }
     sendMsg({type:"welcome", name: state.myName});
   }
-  if(d.type==="race_start"){ startRace(d.text, d.startAt); }
+  if(d.type==="race_start"){
+    if(state.startAt === d.startAt && state.text === d.text) return;
+    startRace(d.text, d.startAt);
+  }
   if(d.type==="progress"){
     state.opp = { ...state.opp, progress:d.progress, wpm:d.wpm, acc:d.acc, correct:d.correct };
     renderOpp();
@@ -534,7 +559,7 @@ $("typingInput").addEventListener("paste", e=>{ e.preventDefault(); toast("Paste
 
 let lastSent = 0;
 function sendProgress(){
-  if(state.mode==="bot" || !state.mq) return;
+  if(state.mode==="bot") return;
   const now = Date.now(); if(now - lastSent < 120 && state.racing) return; lastSent = now;
   const s = stats();
   sendMsg({type:"progress", progress:s.progress, wpm:s.wpm, acc:s.acc, correct:s.correct});
@@ -654,12 +679,12 @@ $("btnRematch").onclick = ()=>{
 };
 $("joinCode").addEventListener("keydown", e=>{ if(e.key==="Enter") $("btnJoin").click(); });
 window.addEventListener("beforeunload", ()=>{
-  if(state.mq && state.mq.connected){
-    try{
-      sendMsg({type:"leave"});
-      if(state.isHost) state.mq.publish(presenceTopic(), "", {retain:true, qos:1});
-    }catch(e){}
-  }
+  try{
+    sendMsg({type:"leave"});
+    if(state.isHost) state.conns.forEach(c=>{
+      if(c.up) c.client.publish(presenceTopic(), "", {retain:true, qos:1});
+    });
+  }catch(e){}
 });
 
 (function(){

@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TypeRace — 2 Player Typing Racing Game</title>
-<meta name="description" content="Race a friend in a 1-minute typing speed battle. Same text, fastest fingers win!">
+<title>TypeRace — 2-4 Player Typing Racing Game</title>
+<meta name="description" content="Race friends in a 1-minute typing speed battle. Same text, fastest fingers win!">
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   :root{
     --bg:#0b0f1a; --card:#151b2e; --card2:#1c2440; --accent:#ff4757; --accent2:#2ed573;
-    --blue:#3742fa; --blue2:#54a0ff; --gold:#ffa502; --text:#f1f2f6; --muted:#a4b0be;
+    --blue2:#54a0ff; --gold:#ffa502; --text:#f1f2f6; --muted:#a4b0be;
   }
   body{ font-family:'Segoe UI',system-ui,-apple-system,sans-serif; background:var(--bg); color:var(--text); min-height:100vh;
     background-image:radial-gradient(ellipse at top, #1a2340 0%, var(--bg) 60%); }
@@ -23,6 +23,7 @@
   .screen{ display:none; } .screen.active{ display:block; animation:fade .3s ease; }
   @keyframes fade{ from{opacity:0; transform:translateY(8px)} to{opacity:1; transform:none} }
   h2{ font-size:22px; margin-bottom:12px; }
+  h3{ font-size:16px; margin:18px 0 8px; }
   p.sub{ color:var(--muted); font-size:14px; line-height:1.55; }
   label{ display:block; font-size:13px; color:var(--muted); margin:14px 0 6px; font-weight:600; text-transform:uppercase; letter-spacing:.6px; }
   input[type=text]{ width:100%; padding:13px 14px; border-radius:12px; border:2px solid #2c3757; background:var(--card2);
@@ -33,96 +34,138 @@
   .btn:hover{ filter:brightness(1.1); } .btn:active{ transform:scale(.98); }
   .btn:disabled{ opacity:.5; cursor:not-allowed; }
   .btn-red{ background:linear-gradient(135deg,#ff4757,#e84118); }
-  .btn-blue{ background:linear-gradient(135deg,#3742fa,#2f3542); background:linear-gradient(135deg,#3742fa,#5352ed); }
+  .btn-blue{ background:linear-gradient(135deg,#3742fa,#5352ed); }
   .btn-green{ background:linear-gradient(135deg,#2ed573,#1e9e57); }
   .btn-ghost{ background:transparent; border:2px solid #2c3757; color:var(--text); }
-  .row{ display:flex; gap:12px; } .row .btn{ flex:1; }
+  .btn-small{ padding:10px; font-size:14px; margin-top:8px; }
+  .row{ display:flex; gap:10px; flex-wrap:wrap; } .row .btn{ flex:1; min-width:100px; }
   .or{ text-align:center; color:var(--muted); margin:16px 0 2px; font-size:13px; font-weight:700; letter-spacing:2px; }
   .code-big{ font-size:44px; font-weight:900; letter-spacing:10px; text-align:center; color:var(--gold);
     background:var(--card2); border:2px dashed #3d4a75; border-radius:14px; padding:14px 8px; margin:14px 0; }
-  .players{ display:flex; gap:12px; margin-top:14px; }
-  .player-slot{ flex:1; background:var(--card2); border-radius:12px; padding:14px; text-align:center; font-weight:700; }
-  .player-slot .car{ font-size:34px; display:block; margin-bottom:4px; }
+  .players{ display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:14px; }
+  .player-slot{ background:var(--card2); border-radius:12px; padding:12px; text-align:center; font-weight:700; }
+  .player-slot .car{ font-size:30px; display:block; margin-bottom:4px; }
   .player-slot.empty{ color:var(--muted); font-weight:500; border:2px dashed #2c3757; background:transparent; }
   .status{ text-align:center; color:var(--gold); font-size:14px; margin-top:14px; min-height:20px; font-weight:600; }
-  /* RACE TRACK */
+  /* car picker */
+  .car-grid{ display:flex; gap:10px; flex-wrap:wrap; margin-top:4px; }
+  .car-btn{ font-size:30px; padding:8px 12px; border-radius:12px; border:2px solid #2c3757; background:var(--card2); cursor:pointer; position:relative; }
+  .car-btn.sel{ border-color:var(--gold); background:#2a3355; }
+  .car-btn.locked{ opacity:.45; }
+  .car-btn .lock{ position:absolute; top:-8px; right:-6px; font-size:14px; }
+  .car-btn .need{ display:block; font-size:10px; color:var(--muted); font-weight:700; }
+  /* TRACK */
   .track{ background:#11162a; border-radius:14px; padding:16px 12px 10px; margin-top:6px; position:relative; overflow:hidden; }
   .lane{ position:relative; height:56px; border-bottom:3px dashed #3d4a75; margin-bottom:8px; }
   .lane:last-child{ border-bottom:none; }
   .lane .who{ position:absolute; left:0; top:-2px; font-size:11px; font-weight:800; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; }
-  .racer{ position:absolute; bottom:4px; left:0; font-size:36px; transition:left .25s ease; transform:scaleX(-1); line-height:1; z-index:2; }
+  .racer{ position:absolute; bottom:4px; left:0; font-size:34px; transition:left .3s ease; transform:scaleX(-1); line-height:1; z-index:2; }
+  .racer .fire{ position:absolute; left:-24px; top:2px; font-size:24px; transform:scaleX(-1); display:none; animation:flick .25s infinite alternate; }
+  .racer.onfire .fire{ display:block; }
+  @keyframes flick{ from{opacity:.6; } to{opacity:1; } }
   .finish{ position:absolute; right:6px; top:0; bottom:0; font-size:20px; writing-mode:vertical-rl; opacity:.9; }
-  .lane-bar{ position:absolute; bottom:0; left:0; height:4px; border-radius:2px; transition:width .25s ease; }
+  .lane-bar{ position:absolute; bottom:0; left:0; height:4px; border-radius:2px; transition:width .3s ease; }
   .hud{ display:flex; gap:10px; margin-top:16px; }
   .stat{ flex:1; background:var(--card2); border-radius:12px; padding:10px 6px; text-align:center; }
   .stat .num{ font-size:24px; font-weight:900; } .stat .lbl{ font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.6px; font-weight:700; }
-  .timer-wrap{ height:10px; background:#232c4b; border-radius:6px; overflow:hidden; margin-top:16px; }
+  .series-line{ text-align:center; font-weight:800; color:var(--gold); margin-top:12px; font-size:14px; min-height:18px; }
+  .timer-wrap{ height:10px; background:#232c4b; border-radius:6px; overflow:hidden; margin-top:10px; }
   .timer-bar{ height:100%; width:100%; background:linear-gradient(90deg,var(--accent2),var(--gold),var(--accent)); transition:width 1s linear; }
+  #raceTextWrap{ margin-top:16px; border-radius:12px; transition:filter .15s, transform .15s; }
+  #raceTextWrap.jinxed{ filter:blur(2.5px); transform:rotate(1.3deg) scale(.99); }
   #raceText{ font-family:'Courier New',monospace; font-size:20px; line-height:1.75; letter-spacing:.4px;
-    background:var(--card2); border-radius:12px; padding:18px; margin-top:16px; user-select:none; word-break:break-word; }
+    background:var(--card2); border-radius:12px; padding:18px; user-select:none; word-break:break-word; }
   #raceText span{ color:#78839e; border-radius:3px; }
   #raceText span.correct{ color:var(--accent2); }
   #raceText span.wrong{ color:#fff; background:var(--accent); }
   #raceText span.current{ background:#3d4a75; color:#fff; box-shadow:0 0 0 1px #57648f; }
+  #raceText span.power{ color:var(--gold); font-weight:700; text-decoration:underline dotted; }
+  #raceText span.power.correct{ color:var(--gold); background:#4a3800; }
   #typingInput{ width:100%; margin-top:14px; padding:14px; font-size:17px; font-family:'Courier New',monospace;
     border-radius:12px; border:2px solid #2c3757; background:#0e1322; color:var(--text); outline:none; resize:none; }
   #typingInput:focus{ border-color:var(--accent2); }
+  .react-bar{ display:flex; gap:8px; margin-top:14px; align-items:center; flex-wrap:wrap; }
+  .react-btn{ font-size:22px; background:var(--card2); border:2px solid #2c3757; border-radius:999px; padding:4px 12px; cursor:pointer; }
+  .react-btn:active{ transform:scale(.92); }
+  .taunt-btn{ font-size:13px; font-weight:700; background:transparent; color:var(--muted); border:2px solid #2c3757; border-radius:999px; padding:5px 11px; cursor:pointer; }
+  .sound-btn{ margin-left:auto; font-size:20px; background:transparent; border:none; cursor:pointer; }
+  #tauntFeed{ min-height:26px; margin-top:10px; text-align:center; font-weight:700; color:var(--blue2); }
+  #floatEmoji{ position:fixed; left:50%; top:38%; transform:translate(-50%,-50%) scale(.5); font-size:110px; z-index:55;
+    opacity:0; pointer-events:none; transition:all .25s ease; }
+  #floatEmoji.show{ opacity:1; transform:translate(-50%,-60%) scale(1.15); }
+  #streakBadge{ text-align:center; font-weight:900; color:#ff7f50; min-height:20px; margin-top:8px; font-size:15px; }
   #countdown{ position:fixed; inset:0; display:none; align-items:center; justify-content:center; z-index:50;
     background:rgba(5,8,16,.82); font-size:110px; font-weight:900; color:var(--gold); text-shadow:0 8px 40px rgba(0,0,0,.6); }
   #countdown.show{ display:flex; }
   /* RESULT */
   .trophy{ font-size:74px; text-align:center; }
   .winner-name{ text-align:center; font-size:30px; font-weight:900; margin-top:6px; }
+  .result-stage{ display:flex; justify-content:center; gap:44px; font-size:56px; margin-top:8px; }
+  .result-stage .loser-car{ position:relative; filter:grayscale(.4); }
+  .result-stage .smoke{ position:absolute; top:-16px; right:-14px; font-size:30px; animation:puff 1.2s infinite; }
+  @keyframes puff{ 0%{ transform:translateY(0) scale(.8); opacity:.9;} 100%{ transform:translateY(-16px) scale(1.3); opacity:0;} }
   .vs-table{ width:100%; margin-top:18px; border-collapse:collapse; }
   .vs-table th,.vs-table td{ padding:11px 8px; text-align:center; border-bottom:1px solid #263052; font-size:15px; }
   .vs-table th{ color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.6px; }
   .crown{ color:var(--gold); }
+  .lb-table{ width:100%; border-collapse:collapse; margin-top:6px; }
+  .lb-table td,.lb-table th{ padding:8px; border-bottom:1px solid #263052; font-size:14px; text-align:center; }
+  .lb-table th{ color:var(--muted); font-size:11px; text-transform:uppercase; }
+  .lb-empty{ color:var(--muted); font-size:14px; text-align:center; padding:10px; }
   .toast{ position:fixed; left:50%; bottom:22px; transform:translateX(-50%) translateY(80px); background:#232c4b; color:#fff;
     padding:11px 18px; border-radius:999px; font-size:14px; font-weight:600; z-index:60; transition:transform .3s; box-shadow:0 10px 30px rgba(0,0,0,.4); max-width:92vw; text-align:center;}
   .toast.show{ transform:translateX(-50%) translateY(0); }
   footer{ text-align:center; color:#57648f; font-size:12px; margin-top:26px; }
-  @media (max-width:560px){ .logo{font-size:32px} #raceText{font-size:17px} .racer{font-size:29px} .code-big{font-size:32px; letter-spacing:6px} }
+  @media (max-width:560px){ .logo{font-size:32px} #raceText{font-size:17px} .racer{font-size:28px} .code-big{font-size:32px; letter-spacing:6px} .players{grid-template-columns:1fr 1fr} }
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
     <div class="logo">🏎️ Type<span class="red">Race</span> <span class="green">Live</span></div>
-    <div class="tagline">2-player typing race — fastest in 1 minute wins 🏆</div>
+    <div class="tagline">2–4 player typing race — fastest in 1 minute wins 🏆</div>
   </header>
 
   <!-- HOME -->
   <section id="screen-home" class="screen active">
     <div class="card">
       <h2>🚦 Start a Race</h2>
-      <p class="sub">Both players get the <b>same text</b>. Type fast and accurately for 60 seconds — the best typist wins.</p>
+      <p class="sub">Everyone gets the <b>same text</b>. Type fast and accurately for 60 seconds — the best typist wins.</p>
       <label>Your name</label>
       <input type="text" id="playerName" placeholder="e.g. Hasib" maxlength="16">
+      <label>Choose your car</label>
+      <div class="car-grid" id="carGrid"></div>
       <button class="btn btn-red" id="btnCreate">🏠 Create Room (Host)</button>
       <div class="or">— OR —</div>
       <label>Room code</label>
       <input type="text" id="joinCode" placeholder="e.g. K7X2P9" maxlength="6" style="text-transform:uppercase">
       <button class="btn btn-blue" id="btnJoin">🚗 Join Room</button>
-      <div class="or">— PRACTICE —</div>
-      <button class="btn btn-ghost" id="btnBot">🤖 Solo Race vs Bot</button>
+      <div class="or">— SOLO —</div>
+      <label>Race vs Bot</label>
+      <div class="row">
+        <button class="btn btn-ghost btn-small" data-bot="easy">🐢 Easy</button>
+        <button class="btn btn-ghost btn-small" data-bot="medium">🐇 Medium</button>
+        <button class="btn btn-ghost btn-small" data-bot="hard">🐆 Hard</button>
+        <button class="btn btn-ghost btn-small" data-bot="legend">👑 Legend</button>
+      </div>
+      <button class="btn btn-ghost" id="btnGhost">👻 Race vs Your Ghost (your best run)</button>
       <div class="status" id="homeStatus"></div>
+      <h3>🏆 Your Top Races</h3>
+      <div id="leaderboard"></div>
     </div>
   </section>
 
   <!-- LOBBY -->
   <section id="screen-lobby" class="screen">
     <div class="card">
-      <h2>🏁 Race Lobby</h2>
-      <p class="sub">Share this code with your friend. <b>Keep this tab open</b> — closing it ends the room.</p>
+      <h2>🏁 Race Lobby <span style="font-size:14px;color:var(--muted)">(up to 4 players)</span></h2>
+      <p class="sub">Share this code with your friends. <b>Keep this tab open</b> — closing it ends the room.</p>
       <div class="code-big" id="lobbyCode">------</div>
       <div class="row">
-        <button class="btn btn-ghost" id="btnCopyCode">📋 Code Copy</button>
-        <button class="btn btn-ghost" id="btnCopyLink">🔗 Invite Link Copy</button>
+        <button class="btn btn-ghost" id="btnCopyCode">📋 Copy Code</button>
+        <button class="btn btn-ghost" id="btnCopyLink">🔗 Copy Invite Link</button>
       </div>
-      <div class="players">
-        <div class="player-slot" id="slotYou"><span class="car">🔴🏎️</span><span class="pname">You</span></div>
-        <div class="player-slot empty" id="slotOpp"><span class="car">⏳</span><span class="pname">Waiting for friend...</span></div>
-      </div>
+      <div class="players" id="lobbyPlayers"></div>
       <button class="btn btn-green" id="btnStart" disabled>▶ Start Race</button>
       <button class="btn btn-ghost" id="btnLeaveLobby">⬅ Leave</button>
       <div class="status" id="lobbyStatus"></div>
@@ -132,29 +175,30 @@
   <!-- RACE -->
   <section id="screen-race" class="screen">
     <div class="card">
-      <div class="track">
-        <div class="lane">
-          <span class="who" id="laneYouName">You</span>
-          <div class="lane-bar" id="barYou" style="background:var(--accent); width:0%"></div>
-          <div class="racer" id="carYou" style="left:0%">🏎️</div>
-          <div class="finish">🏁</div>
-        </div>
-        <div class="lane">
-          <span class="who" id="laneOppName">Opponent</span>
-          <div class="lane-bar" id="barOpp" style="background:var(--blue2); width:0%"></div>
-          <div class="racer" id="carOpp" style="left:0%">🏎️</div>
-          <div class="finish">🏁</div>
-        </div>
-      </div>
+      <div class="track" id="track"></div>
+      <div id="tauntFeed"></div>
       <div class="hud">
         <div class="stat"><div class="num" id="statTime">60</div><div class="lbl">⏱ Seconds</div></div>
         <div class="stat"><div class="num" id="statWpm">0</div><div class="lbl">⚡ Your WPM</div></div>
         <div class="stat"><div class="num" id="statAcc">100%</div><div class="lbl">🎯 Accuracy</div></div>
-        <div class="stat"><div class="num" id="statOppWpm">0</div><div class="lbl">👀 Rival WPM</div></div>
+        <div class="stat"><div class="num" id="statBest">0</div><div class="lbl">👀 Best Rival WPM</div></div>
       </div>
+      <div class="series-line" id="seriesLineRace"></div>
       <div class="timer-wrap"><div class="timer-bar" id="timerBar"></div></div>
-      <div id="raceText"></div>
+      <div id="raceTextWrap"><div id="raceText"></div></div>
       <textarea id="typingInput" rows="2" placeholder="Type here after the countdown..." autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
+      <div id="streakBadge"></div>
+      <div class="react-bar">
+        <button class="react-btn" data-react="😂">😂</button>
+        <button class="react-btn" data-react="🔥">🔥</button>
+        <button class="react-btn" data-react="👏">👏</button>
+        <button class="react-btn" data-react="😮">😮</button>
+        <button class="taunt-btn" data-taunt="Slow! 🐢">Slow! 🐢</button>
+        <button class="taunt-btn" data-taunt="Catch me if you can 😎">Catch me 😎</button>
+        <button class="taunt-btn" data-taunt="Too easy 😏">Too easy 😏</button>
+        <button class="taunt-btn" data-taunt="Wait for me! 😱">Wait! 😱</button>
+        <button class="sound-btn" id="btnSound" title="Sound on/off">🔊</button>
+      </div>
       <div class="status" id="raceStatus"></div>
     </div>
   </section>
@@ -163,13 +207,15 @@
   <section id="screen-result" class="screen">
     <div class="card">
       <div class="trophy" id="resultEmoji">🏆</div>
+      <div class="result-stage" id="resultStage"></div>
       <div class="winner-name" id="resultTitle">You Win!</div>
       <p class="sub" style="text-align:center" id="resultSub"></p>
+      <div class="series-line" id="seriesLineResult"></div>
       <table class="vs-table">
-        <tr><th>Player</th><th>WPM</th><th>Accuracy</th><th>Correct Chars</th><th>Progress</th></tr>
-        <tr id="rowYou"></tr>
-        <tr id="rowOpp"></tr>
+        <tr><th>Player</th><th>WPM</th><th>Accuracy</th><th>Correct</th><th>Done</th></tr>
+        <tbody id="resultRows"></tbody>
       </table>
+      <button class="btn btn-green" id="btnShare">📸 Share Result Card</button>
       <button class="btn btn-red" id="btnRematch">🔁 Rematch (New Text)</button>
       <button class="btn btn-ghost" id="btnHome">🏠 Home</button>
       <div class="status" id="resultStatus"></div>
@@ -179,10 +225,12 @@
   <footer>Made by Fayzur Rahman Hasib</footer>
 </div>
 <div id="countdown"></div>
+<div id="floatEmoji"></div>
 <div class="toast" id="toast"></div>
+<canvas id="shareCanvas" width="1080" height="1080" style="display:none"></canvas>
 <script>
 "use strict";
-/* ================= TEXT BANK — every race gets a fresh one ================= */
+/* ================= TEXT BANK ================= */
 const TEXTS = [
   "The quick brown fox jumps over the lazy dog while the sun rises slowly over the quiet hills and the birds begin their morning song in the tall green trees near the river bank.",
   "Practice makes a person perfect but nobody is perfect so why practice at all just keep typing fast and never look back at the keyboard because speed comes from trust and rhythm.",
@@ -216,9 +264,48 @@ function pickText(){
   lastTextIdx = i; return TEXTS[i];
 }
 
+/* ================= STORAGE: cars, wins, ghost, leaderboard ================= */
+const CARS = [
+  { e:"🏎️", need:0 }, { e:"🚗", need:0 }, { e:"🚙", need:0 },
+  { e:"🚕", need:1 }, { e:"🚓", need:3 }, { e:"🏍️", need:5 }
+];
+const store = {
+  get(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch(e){ return d; } },
+  set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+};
+let myCar = store.get("tr_car", "🏎️");
+let totalWins = store.get("tr_wins", 0);
+function renderCarGrid(){
+  const g = $("carGrid"); g.innerHTML = "";
+  CARS.forEach(c=>{
+    const locked = totalWins < c.need;
+    const b = document.createElement("button");
+    b.className = "car-btn" + (myCar===c.e ? " sel":"") + (locked ? " locked":"");
+    b.innerHTML = c.e + (locked ? '<span class="lock">🔒</span><span class="need">' + c.need + ' wins</span>' : '');
+    b.onclick = ()=>{
+      if(locked){ toast("Win " + c.need + " races to unlock this ride 🔒 (you have " + totalWins + ")"); return; }
+      myCar = c.e; store.set("tr_car", myCar); renderCarGrid();
+    };
+    g.appendChild(b);
+  });
+}
+function renderLeaderboard(){
+  const lb = store.get("tr_lb", []);
+  const el = $("leaderboard");
+  if(!lb.length){ el.innerHTML = '<div class="lb-empty">No races yet — your best runs will show here.</div>'; return; }
+  el.innerHTML = '<table class="lb-table"><tr><th>#</th><th>WPM</th><th>Accuracy</th><th>Result</th><th>Date</th></tr>' +
+    lb.map((r,i)=>`<tr><td>${i+1}</td><td><b>${r.wpm}</b></td><td>${r.acc}%</td><td>${r.win ? "🏆 Won":"Lost"}</td><td>${r.date}</td></tr>`).join("") + "</table>";
+}
+function saveToLeaderboard(wpm, acc, win){
+  const lb = store.get("tr_lb", []);
+  lb.push({ wpm, acc, win, date: new Date().toLocaleDateString("en-GB", {day:"numeric", month:"short"}) });
+  lb.sort((a,b)=>b.wpm-a.wpm);
+  store.set("tr_lb", lb.slice(0,10));
+}
+
 /* ================= STATE =================
-   Transport: MQTT over secure WebSocket (public brokers) — works on
-   mobile networks where P2P/WebRTC gets blocked. */
+   Transport: MQTT over secure WebSocket, dual parallel brokers.
+   Host relays guest messages so up to 4 players can race. */
 const TOPIC_PREFIX = "typerace-live-v2";
 const MQ_BROKERS = [
   "wss://broker.emqx.io:8084/mqtt",
@@ -226,23 +313,26 @@ const MQ_BROKERS = [
   "wss://broker.hivemq.com:8884/mqtt",
   "wss://test.mosquitto.org:8081/mqtt"
 ];
-const RACE_SECONDS = 60;
+const RACE_SECONDS = 60, MAX_PLAYERS = 4, SERIES_TARGET = 2;
 const $ = id => document.getElementById(id);
 const state = {
   mode: null, conns: [], roomCode: "", netUp: false,
-  myName: "Player", oppName: "Opponent",
+  myId: "me", myName: "Player",
   isHost: false, oppJoined: false, inLobby: false,
-  presenceSeen: false, joinAttempt: 0,
-  text: "", typed: "", correct: 0, totalTyped: 0,
-  racing: false, finished: false,
+  presenceSeen: false, joinAttempt: 0, lastJoinSent: 0,
+  players: {},           // id -> {id,name,car,progress,wpm,acc,correct,streak,final,left}
+  series: {},            // id -> series wins
+  text: "", typed: "", correct: 0, totalTyped: 0, streak: 0, bestStreak: 0,
+  powerWords: [],        // [{start,end,fired}]
+  racing: false, finished: false, resultShown: false, seriesOver: false,
   startAt: 0, timerInt: null, botInt: null,
-  opp: { progress:0, wpm:0, acc:100, correct:0, finished:false },
-  myFinal: null, oppFinal: null, resultShown: false,
-  botWpm: 45, botTyped: 0
+  myFinal: null, resultData: null,
+  botLevel: "medium", botWpm: 45, botTyped: 0, botName: "Robo Racer 🤖",
+  ghost: null, muted: store.get("tr_muted", false), violations: 0
 };
-const hostTopic    = () => `${TOPIC_PREFIX}/${state.roomCode}/to-host`;
-const guestTopic   = () => `${TOPIC_PREFIX}/${state.roomCode}/to-guest`;
-const presenceTopic= () => `${TOPIC_PREFIX}/${state.roomCode}/presence`;
+const hostTopic     = () => `${TOPIC_PREFIX}/${state.roomCode}/to-host`;
+const guestTopic    = () => `${TOPIC_PREFIX}/${state.roomCode}/to-guest`;
+const presenceTopic = () => `${TOPIC_PREFIX}/${state.roomCode}/presence`;
 
 function toast(msg, ms=2600){
   const t = $("toast"); t.textContent = msg; t.classList.add("show");
@@ -252,32 +342,33 @@ function showScreen(name){
   document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));
   $("screen-"+name).classList.add("active");
 }
-function myName(){ return ($("playerName").value.trim() || "Player").slice(0,16); }
+function myNameInput(){ return ($("playerName").value.trim() || "Player").slice(0,16); }
 function makeCode(){
   const chars = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; let c="";
   for(let i=0;i<6;i++) c += chars[Math.floor(Math.random()*chars.length)];
   return c;
 }
+function escapeHtml(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
 function stats(){
   const elapsedMin = Math.max((Date.now()-state.startAt)/60000, 0.001);
   const wpm = state.racing || state.finished ? Math.round((state.correct/5)/elapsedMin) : 0;
   const acc = state.totalTyped ? Math.round(state.correct/state.totalTyped*100) : 100;
   return { wpm: Math.min(wpm, 250), acc, correct: state.correct,
-           progress: Math.round(state.typed.length/state.text.length*100) || 0 };
+           progress: Math.round(state.typed.length/state.text.length*100) || 0, streak: state.streak };
 }
 function sendMsg(obj){
-  if(state.mode==="bot") return;
+  if(state.mode==="bot" || state.mode==="ghost") return;
   const topic = state.isHost ? guestTopic() : hostTopic();
   const data = JSON.stringify(obj);
-  state.conns.forEach(c=>{
-    if(c.up){ try{ c.client.publish(topic, data, {qos:1}); }catch(e){} }
-  });
+  state.conns.forEach(c=>{ if(c.up){ try{ c.client.publish(topic, data, {qos:1}); }catch(e){} } });
+}
+function relay(obj){ // host only: forward a guest message to all guests
+  if(!state.isHost) return;
+  const data = JSON.stringify(obj);
+  state.conns.forEach(c=>{ if(c.up){ try{ c.client.publish(guestTopic(), data, {qos:1}); }catch(e){} } });
 }
 
-/* ================= NETWORK (lazy-loaded MQTT, dual parallel servers) =================
-   The library loads lazily on click (instant page load) and connects to
-   2 servers in parallel — whichever connects first wins. The host is on
-   both servers, so the guest can reach it through either one. */
+/* ================= NETWORK ================= */
 let mqttLibPromise = null;
 function loadMqtt(){
   if(window.mqtt) return Promise.resolve();
@@ -301,8 +392,7 @@ function connectBroker(idx){
     reconnectPeriod: 2500, connectTimeout: 6000, keepalive: 30, clean: true };
   if(state.isHost){
     opts.clientId = "trh-" + state.roomCode + "-" + idx;
-    opts.clean = false;
-    opts.protocolVersion = 5;
+    opts.clean = false; opts.protocolVersion = 5;
     opts.properties = { sessionExpiryInterval: 3600 };
     opts.will = { topic: presenceTopic(), payload: "", retain: true, qos: 1 };
   }
@@ -313,7 +403,7 @@ function connectBroker(idx){
     conn.up = true;
     if(state.isHost){
       client.subscribe(hostTopic(), {qos:1});
-      client.publish(presenceTopic(), JSON.stringify({name: state.myName}), {retain:true, qos:1});
+      client.publish(presenceTopic(), JSON.stringify({name: state.myName, car: myCar}), {retain:true, qos:1});
     } else {
       client.subscribe([guestTopic(), presenceTopic()], {qos:1});
     }
@@ -353,164 +443,308 @@ function closeConns(){
 }
 function onPresence(raw){
   if(state.isHost) return;
-  if(!raw){ // host left
-    if(!state.racing && state.inLobby) onOppLeft();
+  if(!raw){ if(!state.racing && state.inLobby) hostGone(); return; }
+  let p; try{ p = JSON.parse(raw); }catch(e){ return; }
+  ensurePlayer("host", p.name || "Host", p.car || "🏎️");
+  if(state.presenceSeen && !state.oppJoined){
+    if(Date.now() - (state.lastJoinSent||0) > 4000){
+      state.lastJoinSent = Date.now();
+      sendMsg({type:"join", from: state.myId, name: state.myName, car: myCar});
+    }
     return;
   }
-  let p; try{ p = JSON.parse(raw); }catch(e){ return; }
   if(state.presenceSeen) return;
-  state.presenceSeen = true;
-  state.oppName = p.name || "Host";
-  sendMsg({type:"join", name: state.myName});
+  state.presenceSeen = true; state.lastJoinSent = Date.now();
+  sendMsg({type:"join", from: state.myId, name: state.myName, car: myCar});
   $("homeStatus").textContent = "Room found ✅ Connecting to host...";
 }
+function hostGone(){
+  state.oppJoined = false; state.inLobby = false;
+  toast("The host left 👋");
+  showScreen("home");
+}
 
-/* ================= HOST ================= */
+/* ================= PLAYERS / ROSTER ================= */
+function ensurePlayer(id, name, car){
+  if(!state.players[id]) state.players[id] = { id, name, car: car||"🏎️", progress:0, wpm:0, acc:100, correct:0, streak:0, final:null, left:false };
+  else { state.players[id].name = name || state.players[id].name; if(car) state.players[id].car = car; }
+  return state.players[id];
+}
+function rosterList(){
+  return Object.values(state.players).map(p=>({id:p.id, name:p.name, car:p.car}));
+}
+function broadcastRoster(){ relay({type:"roster", players: rosterList()}); }
+function applyRoster(list){
+  list.forEach(p=>{ if(p.id !== state.myId) ensurePlayer(p.id, p.name, p.car); });
+  renderLobbyPlayers();
+}
+function resetPlayers(keepRoster){
+  const me = { id: state.myId, name: state.myName, car: myCar, progress:0, wpm:0, acc:100, correct:0, streak:0, final:null, left:false };
+  if(keepRoster){
+    const old = state.players; state.players = { [state.myId]: me };
+    Object.values(old).forEach(p=>{ if(p.id !== state.myId && !p.left) state.players[p.id] = { ...p, progress:0, wpm:0, correct:0, streak:0, final:null }; });
+  } else state.players = { [state.myId]: me };
+}
+function renderLobbyPlayers(){
+  const el = $("lobbyPlayers"); el.innerHTML = "";
+  const list = Object.values(state.players);
+  for(let i=0;i<MAX_PLAYERS;i++){
+    const p = list[i];
+    const d = document.createElement("div");
+    if(p){
+      d.className = "player-slot";
+      d.innerHTML = `<span class="car">${p.car}</span><span class="pname">${escapeHtml(p.name)}${p.id===state.myId ? " (You)" : ""}${p.id==="host" ? " 👑" : ""}</span>`;
+    } else {
+      d.className = "player-slot empty";
+      d.innerHTML = '<span class="car">⏳</span><span class="pname">Waiting for player...</span>';
+    }
+    el.appendChild(d);
+  }
+  const remotes = list.filter(p=>p.id !== state.myId && !p.left).length;
+  if(state.isHost) $("btnStart").disabled = remotes < 1;
+}
+function seriesText(){
+  const parts = Object.values(state.players).map(p=>`${escapeHtml(p.name)} ${state.series[p.id]||0}`);
+  return parts.length > 1 ? "Series (first to " + SERIES_TARGET + "): " + parts.join(" — ") : "";
+}
+</script>
+<script>
+/* ================= HOST / GUEST FLOW ================= */
 function createRoom(){
-  state.myName = myName(); state.isHost = true; state.mode = "host";
-  state.roomCode = makeCode(); state.inLobby = true; state.oppJoined = false;
-  closeConns();
+  state.myName = myNameInput(); state.isHost = true; state.mode = "online";
+  state.myId = "host"; state.roomCode = makeCode(); state.inLobby = true;
+  state.oppJoined = false; state.series = {}; state.seriesOver = false;
+  closeConns(); resetPlayers(false);
   $("lobbyCode").textContent = state.roomCode;
-  $("slotYou").querySelector(".pname").textContent = state.myName + " (Host) 👑";
-  $("slotOpp").className = "player-slot empty";
-  $("slotOpp").innerHTML = '<span class="car">⏳</span><span class="pname">Waiting for friend...</span>';
-  $("btnStart").disabled = true;
+  renderLobbyPlayers();
   $("lobbyStatus").textContent = "Connecting to server… you can share the code now!";
   showScreen("lobby");
   history.replaceState(null,"","?room="+state.roomCode);
-  startNet(()=>{
-    if(!state.oppJoined) $("lobbyStatus").textContent = "Server ready ✅ Waiting for your friend to join";
-  });
+  startNet(()=>{ if(!state.oppJoined) $("lobbyStatus").textContent = "Server ready ✅ Waiting for players to join"; });
 }
-
-/* ================= GUEST ================= */
 function joinRoom(code){
   code = (code||"").trim().toUpperCase();
   if(code.length!==6){ toast("Enter the 6-character code ⚠️"); return; }
-  state.myName = myName(); state.isHost = false; state.mode = "guest";
-  state.roomCode = code; state.brokerIdx = 0;
-  state.presenceSeen = false; state.oppJoined = false; state.inLobby = false;
+  state.myName = myNameInput(); state.isHost = false; state.mode = "online";
+  state.myId = "g" + Math.random().toString(36).slice(2,8);
+  state.roomCode = code; state.presenceSeen = false; state.oppJoined = false; state.inLobby = false;
+  state.series = {}; state.seriesOver = false;
   const attempt = ++state.joinAttempt;
   $("homeStatus").textContent = "Finding room...";
-  closeConns();
+  closeConns(); resetPlayers(false);
   startNet(null);
   setTimeout(()=>{
     if(state.joinAttempt!==attempt || state.oppJoined) return;
-    if(!state.presenceSeen){
-      $("homeStatus").textContent = "No live room found for this code. Check the code and make sure the host is waiting in the lobby.";
-    }
+    if(!state.presenceSeen) $("homeStatus").textContent = "No live room found for this code. Check the code and make sure the host is waiting in the lobby.";
   }, 14000);
   setTimeout(()=>{
     if(state.joinAttempt!==attempt || state.oppJoined) return;
-    if(state.presenceSeen){ // room ache, host reply dicche na — join abar pathai
-      sendMsg({type:"join", name: state.myName});
-      $("homeStatus").textContent = "Room found — waiting for the host, retrying…";
-    }
+    if(state.presenceSeen){ state.lastJoinSent = Date.now(); sendMsg({type:"join", from: state.myId, name: state.myName, car: myCar}); }
   }, 18000);
   setTimeout(()=>{
     if(state.joinAttempt!==attempt || state.oppJoined) return;
-    if(state.presenceSeen){
-      $("homeStatus").textContent = "Could not connect. Ask the host to create a new room, then join with the new code.";
-    }
+    if(state.presenceSeen) $("homeStatus").textContent = "Could not connect. Ask the host to create a new room, then join with the new code.";
   }, 30000);
 }
-
-function handleData(d){
-  if(!d || !d.type) return;
-  if(d.type==="welcome"){
-    if(state.oppJoined) return;
-    state.oppName = d.name; state.oppJoined = true;
-    enterLobbyGuest();
-  }
-  if(d.type==="join"){
-    state.oppName = d.name;
-    if(!state.oppJoined){
-      state.oppJoined = true;
-      $("slotOpp").className = "player-slot";
-      $("slotOpp").innerHTML = '<span class="car">🔵🏎️</span><span class="pname"></span>';
-      $("slotOpp").querySelector(".pname").textContent = state.oppName;
-      $("btnStart").disabled = false;
-      $("lobbyStatus").textContent = state.oppName + " joined! Press Start 🎉";
-      toast(state.oppName + " joined! 🎉");
-    }
-    sendMsg({type:"welcome", name: state.myName});
-  }
-  if(d.type==="race_start"){
-    if(state.startAt === d.startAt && state.text === d.text) return;
-    startRace(d.text, d.startAt);
-  }
-  if(d.type==="progress"){
-    state.opp = { ...state.opp, progress:d.progress, wpm:d.wpm, acc:d.acc, correct:d.correct };
-    renderOpp();
-  }
-  if(d.type==="finished"){
-    state.oppFinal = d.stats; state.opp.finished = true; state.opp.progress = d.stats.progress;
-    renderOpp(); maybeShowResult();
-  }
-  if(d.type==="rematch_request"){
-    toast(state.oppName + " wants a rematch! 🔁");
-    if(state.isHost) hostStartRace();
-  }
-  if(d.type==="leave"){ if(!state.racing) onOppLeft(); else endRace(true); }
-}
 function enterLobbyGuest(){
-  state.inLobby = true;
+  state.inLobby = true; state.oppJoined = true;
   $("lobbyCode").textContent = state.roomCode;
-  $("slotYou").querySelector(".pname").textContent = state.myName;
-  $("slotOpp").className = "player-slot";
-  $("slotOpp").innerHTML = '<span class="car">👑🏎️</span><span class="pname"></span>';
-  $("slotOpp").querySelector(".pname").textContent = state.oppName + " (Host)";
-  $("btnStart").disabled = true;
+  renderLobbyPlayers();
   $("lobbyStatus").textContent = "Waiting for the host to start… ⏳";
   showScreen("lobby");
   toast("You joined the room! ✅");
 }
-function onOppLeft(){
-  if(state.racing) { endRace(true); return; }
-  state.oppJoined = false; state.inLobby = false;
-  toast("Opponent left 👋");
-  if(state.mode!=="bot") showScreen("home");
+
+function handleData(d){
+  if(!d || !d.type) return;
+  // --- host receives guest messages ---
+  if(state.isHost && d.from && d.from !== "host"){
+    if(d.type==="join"){
+      const existing = state.players[d.from];
+      const remoteCount = Object.values(state.players).filter(p=>p.id!=="host" && !p.left).length;
+      if(!existing && remoteCount >= MAX_PLAYERS-1){
+        relay({type:"room_full", to: d.from}); return;
+      }
+      ensurePlayer(d.from, d.name, d.car);
+      state.players[d.from].left = false;
+      if(!existing){ toast(d.name + " joined! 🎉"); }
+      state.oppJoined = true;
+      renderLobbyPlayers();
+      relay({type:"welcome", to: d.from, name: state.myName, car: myCar, players: rosterList()});
+      broadcastRoster();
+      $("lobbyStatus").textContent = "Players are in! Press Start when ready 🎉";
+      return;
+    }
+    if(d.type==="leave"){
+      const p = state.players[d.from]; if(p){ p.left = true; }
+      relay(d); renderLobbyPlayers();
+      if(!state.racing) toast((p ? p.name : "A player") + " left 👋");
+      if(state.racing) checkAllFinished();
+      return;
+    }
+    // relay everything else (progress, finished, jinx, react, taunt, rematch_request)
+    relay(d);
+    applyRemote(d);
+    if(d.type==="rematch_request"){ toast(state.players[d.from]?.name + " wants a rematch! 🔁"); if(!state.racing) hostStartRace(); }
+    return;
+  }
+  // --- guest receives host-broadcast messages ---
+  if(!state.isHost){
+    if(d.to && d.to !== state.myId && (d.type==="welcome" || d.type==="room_full")) return;
+    if(d.type==="room_full"){ $("homeStatus").textContent = "This room is full (4 players max) 😕 Try another room."; return; }
+    if(d.type==="welcome"){
+      ensurePlayer("host", d.name, d.car);
+      if(d.players) applyRoster(d.players);
+      if(!state.oppJoined) enterLobbyGuest(); else renderLobbyPlayers();
+      return;
+    }
+    if(d.type==="roster"){ applyRoster(d.players); return; }
+    if(d.from === state.myId) return; // my own relayed message
+    applyRemote(d);
+  }
+}
+function applyRemote(d){
+  if(d.type==="race_start"){
+    if(state.startAt === d.startAt && state.text === d.text) return;
+    startRace(d.text, d.startAt, d.powerIdx || []);
+  }
+  if(d.type==="progress" || d.type==="pstate"){
+    const p = state.players[d.from]; if(!p) return;
+    p.progress = d.progress; p.wpm = d.wpm; p.acc = d.acc; p.correct = d.correct; p.streak = d.streak || 0;
+    renderLane(d.from); updateBestRival();
+  }
+  if(d.type==="finished" || d.type==="pfinished"){
+    const p = state.players[d.from]; if(!p) return;
+    p.final = d.stats; p.progress = d.stats.progress;
+    renderLane(d.from); checkAllFinished();
+  }
+  if(d.type==="jinx"){ applyJinx(); }
+  if(d.type==="react"){ floatEmoji(d.emoji); }
+  if(d.type==="taunt"){ showTaunt(d.from, d.text); }
+  if(d.type==="leave"){
+    const p = state.players[d.from]; if(p) p.left = true;
+    if(state.racing) checkAllFinished();
+  }
 }
 
+/* ================= SOUND ================= */
+let actx = null;
+function tone(freq, dur=0.15, type="sine", vol=0.12, when=0){
+  if(state.muted) return;
+  try{
+    actx = actx || new (window.AudioContext||window.webkitAudioContext)();
+    const t = actx.currentTime + when;
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = type; o.frequency.value = freq; o.connect(g); g.connect(actx.destination);
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    o.start(t); o.stop(t + dur + 0.02);
+  }catch(e){}
+}
+const sndClick = ()=>tone(650 + Math.random()*150, 0.05, "square", 0.05);
+const sndWrong = ()=>tone(140, 0.12, "sawtooth", 0.08);
+const sndBeep  = f=>tone(f, 0.18, "sine", 0.12);
+const sndWin   = ()=>{ [523,659,784,1047].forEach((f,i)=>tone(f, 0.25, "triangle", 0.14, i*0.13)); tone(1319, 0.4, "triangle", 0.12, 0.55); };
+const sndLose  = ()=>{ [392,330,262].forEach((f,i)=>tone(f, 0.25, "triangle", 0.1, i*0.16)); };
+
 /* ================= RACE ================= */
+function pickPowerWords(text){
+  const words = []; let idx = 0;
+  text.split(" ").forEach(w=>{
+    words.push({ start: idx, end: idx + w.length }); idx += w.length + 1;
+  });
+  const picks = [];
+  const candidates = words.slice(3, -2);
+  for(let i=0;i<2 && candidates.length;i++){
+    const w = candidates.splice(Math.floor(Math.random()*candidates.length), 1)[0];
+    picks.push({ ...w, fired: false });
+  }
+  return picks;
+}
 function hostStartRace(){
+  if(state.seriesOver){ state.series = {}; state.seriesOver = false; }
   const text = pickText();
   const startAt = Date.now() + 4000;
-  sendMsg({type:"race_start", text, startAt});
-  startRace(text, startAt);
+  const pw = pickPowerWords(text);
+  const powerIdx = pw.map(p=>({start:p.start, end:p.end}));
+  sendMsg({type:"race_start", text, startAt, powerIdx});
+  startRace(text, startAt, powerIdx);
 }
-function startBotRace(){
-  state.mode = "bot"; state.isHost = true; state.oppJoined = true;
-  state.myName = myName(); state.oppName = "Robo Racer 🤖";
-  state.botWpm = 36 + Math.floor(Math.random()*26);
-  startRace(pickText(), Date.now()+4000);
+function startSolo(kind, level){
+  resetPlayers(false);
+  if(kind==="bot"){
+    state.mode = "bot"; state.botLevel = level;
+    const ranges = { easy:[26,34], medium:[42,52], hard:[60,72], legend:[85,100] };
+    const r = ranges[level] || ranges.medium;
+    state.botWpm = r[0] + Math.floor(Math.random()*(r[1]-r[0]));
+    state.botName = "Robo Racer " + level[0].toUpperCase() + level.slice(1) + " 🤖";
+    ensurePlayer("bot", state.botName, "🤖");
+  } else {
+    state.mode = "ghost";
+    const best = store.get("tr_best", null);
+    if(!best){ toast("Finish a race first — your best run becomes your ghost 👻"); return; }
+    state.ghost = best;
+    ensurePlayer("ghost", "Your Best 👻", "👻");
+  }
+  state.series = {}; state.seriesOver = false;
+  const t = pickText();
+  startRace(t, Date.now()+4000, pickPowerWords(t));
 }
-function startRace(text, startAt){
-  state.text = text; state.startAt = startAt; state.inLobby = false;
-  state.typed = ""; state.correct = 0; state.totalTyped = 0; state.violations = 0;
-  state.racing = false; state.finished = false; state.resultShown = false;
-  state.myFinal = null; state.oppFinal = null; state.botTyped = 0;
-  state.opp = { progress:0, wpm:0, acc:100, correct:0, finished:false };
-  $("laneYouName").textContent = "You • " + state.myName;
-  $("laneOppName").textContent = state.oppName;
-  renderText(); renderOpp();
-  $("carYou").style.left = "0%"; $("barYou").style.width = "0%";
-  $("statWpm").textContent = "0"; $("statAcc").textContent = "100%"; $("statOppWpm").textContent = "0";
+function startRace(text, startAt, powerIdx){
+  if(text == null){ text = pickText(); }
+  state.text = text; state.startAt = startAt;
+  state.powerWords = (powerIdx && powerIdx.length ? powerIdx.map(p=>({...p, fired:false})) : pickPowerWords(text));
+  state.typed = ""; state.correct = 0; state.totalTyped = 0; state.streak = 0; state.bestStreak = 0;
+  state.violations = 0; state.botTyped = 0;
+  state.racing = false; state.finished = false; state.resultShown = false; state.myFinal = null;
+  resetPlayers(true);
+  if(state.mode==="bot") ensurePlayer("bot", state.botName, "🤖");
+  if(state.mode==="ghost") ensurePlayer("ghost", "Your Best 👻", "👻");
+  buildLanes();
+  renderText();
+  $("statWpm").textContent = "0"; $("statAcc").textContent = "100%"; $("statBest").textContent = "0";
   $("statTime").textContent = RACE_SECONDS; $("timerBar").style.width = "100%";
-  $("raceStatus").textContent = "";
-  const inp = $("typingInput"); inp.value = ""; inp.disabled = true;
-  inp.placeholder = "Get ready…";
+  $("raceStatus").textContent = ""; $("streakBadge").textContent = ""; $("tauntFeed").textContent = "";
+  $("seriesLineRace").textContent = seriesText();
+  $("raceTextWrap").classList.remove("jinxed");
+  const inp = $("typingInput"); inp.value = ""; inp.disabled = true; inp.placeholder = "Get ready…";
   showScreen("race");
   const cd = $("countdown"); cd.classList.add("show");
   const tick = ()=>{
     const left = Math.ceil((startAt - Date.now())/1000);
-    if(left > 0){ cd.textContent = left; beep(440); setTimeout(tick, 200); }
+    if(left > 0){ cd.textContent = left; sndBeep(440); setTimeout(tick, 200); }
     else {
-      cd.textContent = "GO! 🚀"; beep(880);
+      cd.textContent = "GO! 🚀"; sndBeep(880);
       setTimeout(()=>cd.classList.remove("show"), 450);
       beginTyping();
     }
   }; tick();
+}
+function buildLanes(){
+  const track = $("track"); track.innerHTML = "";
+  state.laneEls = {};
+  Object.values(state.players).filter(p=>!p.left).forEach(p=>{
+    const lane = document.createElement("div"); lane.className = "lane";
+    const color = p.id===state.myId ? "var(--accent)" : "var(--blue2)";
+    lane.innerHTML = `<span class="who">${escapeHtml(p.name)}${p.id===state.myId ? " (You)" : ""}</span>
+      <div class="lane-bar" style="background:${color}; width:0%"></div>
+      <div class="racer" style="left:0%">${p.car}<span class="fire">🔥</span></div>
+      <div class="finish">🏁</div>`;
+    track.appendChild(lane);
+    state.laneEls[p.id] = { car: lane.querySelector(".racer"), bar: lane.querySelector(".lane-bar") };
+  });
+}
+function renderLane(id){
+  const els = state.laneEls && state.laneEls[id]; if(!els) return;
+  const p = state.players[id]; if(!p) return;
+  els.car.style.left = `calc(${p.progress}% - ${p.progress*0.36}px)`;
+  els.bar.style.width = p.progress + "%";
+  els.car.classList.toggle("onfire", (p.streak||0) >= 10);
+}
+function updateBestRival(){
+  let best = 0;
+  Object.values(state.players).forEach(p=>{ if(p.id !== state.myId) best = Math.max(best, p.wpm||0); });
+  $("statBest").textContent = best;
 }
 function beginTyping(){
   state.racing = true;
@@ -521,46 +755,79 @@ function beginTyping(){
     const remain = Math.max(0, Math.ceil((endAt - Date.now())/1000));
     $("statTime").textContent = remain;
     $("timerBar").style.width = (remain/RACE_SECONDS*100) + "%";
-    if(remain<=0) endRace(false);
+    if(remain<=0) endRace();
   }, 200);
-  if(state.mode==="bot") startBot();
+  if(state.mode==="bot" || state.mode==="ghost") startBotEngine();
   sendProgress();
 }
+function isPowerChar(i){ return state.powerWords.some(pw=>i >= pw.start && i < pw.end); }
 function renderText(){
   const typed = state.typed;
   let html = "";
   for(let i=0;i<state.text.length;i++){
     const ch = state.text[i] === " " ? "&nbsp;" : escapeHtml(state.text[i]);
-    if(i < typed.length) html += `<span class="${typed[i]===state.text[i] ? "correct":"wrong"}">${ch}</span>`;
-    else if(i === typed.length) html += `<span class="current">${ch}</span>`;
-    else html += `<span>${ch}</span>`;
+    let cls = "";
+    if(i < typed.length) cls = typed[i]===state.text[i] ? "correct" : "wrong";
+    else if(i === typed.length) cls = "current";
+    if(isPowerChar(i)) cls += " power";
+    html += `<span class="${cls}">${ch}</span>`;
   }
   $("raceText").innerHTML = html;
 }
-function escapeHtml(c){ return c.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function checkPowerWords(){
+  state.powerWords.forEach(pw=>{
+    if(pw.fired) return;
+    if(state.typed.length >= pw.end){
+      let ok = true;
+      for(let i=pw.start;i<pw.end;i++) if(state.typed[i] !== state.text[i]) { ok = false; break; }
+      if(ok){
+        pw.fired = true;
+        toast("⚡ Power word! Your rivals just got jinxed!");
+        tone(980, 0.2, "triangle", 0.14);
+        sendMsg({type:"jinx", from: state.myId});
+      }
+    }
+  });
+}
+function applyJinx(){
+  const w = $("raceTextWrap");
+  w.classList.add("jinxed");
+  toast("😈 You got jinxed by a power word!");
+  setTimeout(()=>w.classList.remove("jinxed"), 2000);
+}
+function floatEmoji(em){
+  const f = $("floatEmoji"); f.textContent = em; f.classList.add("show");
+  clearTimeout(f._h); f._h = setTimeout(()=>f.classList.remove("show"), 1100);
+}
+function showTaunt(fromId, text){
+  const p = state.players[fromId];
+  $("tauntFeed").textContent = (p ? p.name : "Rival") + ": " + text;
+  clearTimeout(showTaunt._h); showTaunt._h = setTimeout(()=>{ $("tauntFeed").textContent = ""; }, 3200);
+}
 
 $("typingInput").addEventListener("input", e=>{
   if(!state.racing || state.finished) return;
   let v = e.target.value;
   if(v.length > state.text.length) v = v.slice(0, state.text.length);
-  if(v.length - state.typed.length > 1){ // more than 1 char at once = voice dictation / paste / word suggestion
-    e.target.value = state.typed; voiceBlock(); return;
-  }
+  if(v.length - state.typed.length > 1){ e.target.value = state.typed; voiceBlock(); return; }
+  const grew = v.length > state.typed.length;
+  const lastOk = grew && v[v.length-1] === state.text[v.length-1];
   state.typed = v; e.target.value = v;
   state.totalTyped = Math.max(state.totalTyped, v.length);
   state.correct = 0;
   for(let i=0;i<v.length;i++) if(v[i]===state.text[i]) state.correct++;
+  if(grew){ if(lastOk){ state.streak++; sndClick(); } else { state.streak = 0; sndWrong(); } }
+  state.bestStreak = Math.max(state.bestStreak, state.streak);
+  const me = state.players[state.myId];
   const s = stats();
-  $("carYou").style.left = `calc(${s.progress}% - ${s.progress*0.36}px)`;
-  $("barYou").style.width = s.progress + "%";
+  if(me){ me.progress = s.progress; me.wpm = s.wpm; me.acc = s.acc; me.correct = s.correct; me.streak = state.streak; }
+  renderLane(state.myId);
   $("statWpm").textContent = s.wpm; $("statAcc").textContent = s.acc + "%";
-  renderText(); sendProgress();
-  if(v.length >= state.text.length) endRace(false);
+  $("streakBadge").textContent = state.streak >= 5 ? "🔥 On fire! Streak x" + state.streak : "";
+  renderText(); checkPowerWords(); sendProgress();
+  if(v.length >= state.text.length) endRace();
 });
 $("typingInput").addEventListener("paste", e=>{ e.preventDefault(); toast("Paste is disabled 😄"); });
-
-/* ===== Anti voice-typing: a keyboard sends 1 character per event, dictation
-   sends whole words at once — anything bigger is blocked before it lands ===== */
 function voiceBlock(){
   state.violations = (state.violations || 0) + 1;
   toast("🎙️ Voice typing is not allowed — use the keyboard!");
@@ -576,78 +843,113 @@ $("typingInput").addEventListener("beforeinput", e=>{
     e.preventDefault(); voiceBlock();
   }
 });
-
 let lastSent = 0;
 function sendProgress(){
-  if(state.mode==="bot") return;
-  const now = Date.now(); if(now - lastSent < 120 && state.racing) return; lastSent = now;
+  if(state.mode==="bot" || state.mode==="ghost") return;
+  const now = Date.now(); if(now - lastSent < 150 && state.racing) return; lastSent = now;
   const s = stats();
-  sendMsg({type:"progress", progress:s.progress, wpm:s.wpm, acc:s.acc, correct:s.correct});
-}
-function renderOpp(){
-  $("carOpp").style.left = `calc(${state.opp.progress}% - ${state.opp.progress*0.36}px)`;
-  $("barOpp").style.width = state.opp.progress + "%";
-  $("statOppWpm").textContent = state.opp.wpm;
+  sendMsg({type:"progress", from: state.myId, progress:s.progress, wpm:s.wpm, acc:s.acc, correct:s.correct, streak: state.streak});
 }
 
-/* ================= BOT ================= */
-function startBot(){
+/* ================= BOT / GHOST ENGINE ================= */
+function startBotEngine(){
   clearInterval(state.botInt);
+  const isGhost = state.mode === "ghost";
+  const totalChars = isGhost ? Math.max(state.ghost.correct || 200, 50) : state.text.length;
+  const duration = isGhost ? Math.min(state.ghost.durationSec || 60, 60) : 60;
+  const paceWpm = isGhost ? state.ghost.wpm : state.botWpm;
+  const oppId = isGhost ? "ghost" : "bot";
   state.botInt = setInterval(()=>{
-    if(!state.racing) { clearInterval(state.botInt); return; }
-    const charsPerTick = (state.botWpm*5/60) * 0.25 * (0.6 + Math.random()*0.9);
+    if(!state.racing){ clearInterval(state.botInt); return; }
+    const charsPerTick = isGhost
+      ? (totalChars / (duration*4)) * (0.85 + Math.random()*0.3)
+      : (paceWpm*5/60) * 0.25 * (0.6 + Math.random()*0.9);
     state.botTyped = Math.min(state.text.length, state.botTyped + charsPerTick);
     const elapsedMin = Math.max((Date.now()-state.startAt)/60000, 0.001);
-    const correct = Math.floor(state.botTyped * 0.94);
-    state.opp = { progress: Math.round(state.botTyped/state.text.length*100),
-      wpm: Math.round((correct/5)/elapsedMin), acc: 94, correct, finished: state.botTyped>=state.text.length };
-    renderOpp();
+    const correct = Math.floor(state.botTyped * (isGhost ? (state.ghost.acc||95)/100 : 0.94));
+    const p = state.players[oppId]; if(!p){ clearInterval(state.botInt); return; }
+    p.progress = Math.round(state.botTyped/state.text.length*100);
+    p.correct = correct;
+    p.wpm = Math.round((correct/5)/elapsedMin);
+    p.acc = isGhost ? (state.ghost.acc||95) : 94;
+    p.streak = p.progress > 15 && p.progress < 92 && Math.random() < 0.4 ? 12 : 0;
+    renderLane(oppId); updateBestRival();
     if(state.botTyped >= state.text.length){
-      state.oppFinal = { ...state.opp };
+      p.final = { wpm: p.wpm, acc: p.acc, correct: p.correct, progress: 100 };
       clearInterval(state.botInt);
-      $("raceStatus").textContent = "🤖 The bot finished! Finish your text or wait for the timer.";
+      $("raceStatus").textContent = (isGhost ? "👻 Your ghost finished!" : "🤖 The bot finished!") + " Finish your text or wait for the timer.";
+      checkAllFinished();
     }
   }, 250);
 }
 
 /* ================= END / RESULT ================= */
-function endRace(oppLeft){
+function endRace(){
   if(state.finished) return;
   state.finished = true; state.racing = false;
   clearInterval(state.timerInt); clearInterval(state.botInt);
   $("typingInput").disabled = true;
   const s = stats();
   state.myFinal = s;
-  if(state.mode!=="bot") sendMsg({type:"finished", stats:s});
-  if(state.mode==="bot" && !state.oppFinal)
-    state.oppFinal = { progress: state.opp.progress, wpm: state.opp.wpm, acc: 94, correct: state.opp.correct };
-  if(oppLeft) state.oppFinal = state.oppFinal || { progress: state.opp.progress, wpm: state.opp.wpm, acc: state.opp.acc, correct: state.opp.correct };
-  setTimeout(maybeShowResult, state.mode==="bot" ? 100 : 900);
+  const me = state.players[state.myId]; if(me) me.final = s;
+  if(state.mode==="online") sendMsg({type:"finished", from: state.myId, stats: s});
+  if(state.mode==="bot" || state.mode==="ghost"){
+    const oppId = state.mode==="bot" ? "bot" : "ghost";
+    const p = state.players[oppId];
+    if(p && !p.final) p.final = { wpm: p.wpm, acc: p.acc, correct: p.correct, progress: p.progress };
+  }
+  setTimeout(checkAllFinished, state.mode==="online" ? 900 : 120);
 }
-function maybeShowResult(){
-  if(state.resultShown || !state.finished) return;
-  if(!state.oppFinal) {
-    state.oppFinal = { progress: state.opp.progress, wpm: state.opp.wpm, acc: state.opp.acc, correct: state.opp.correct };
+function checkAllFinished(){
+  if(!state.finished || state.resultShown) return;
+  const racers = Object.values(state.players).filter(p=>!p.left);
+  const allIn = racers.every(p=>p.final);
+  if(!allIn){
+    // give rivals a moment to report; fall back to last known numbers
+    clearTimeout(checkAllFinished._h);
+    checkAllFinished._h = setTimeout(()=>{
+      racers.forEach(p=>{ if(!p.final) p.final = { wpm: p.wpm, acc: p.acc, correct: p.correct, progress: p.progress }; });
+      showResult();
+    }, 1600);
+    return;
   }
   showResult();
 }
 function showResult(){
+  if(state.resultShown) return;
   state.resultShown = true;
-  const me = state.myFinal, op = state.oppFinal;
-  let iWin;
-  if(me.correct !== op.correct) iWin = me.correct > op.correct;
-  else if(me.acc !== op.acc) iWin = me.acc > op.acc;
-  else iWin = me.wpm >= op.wpm;
-  const tie = me.correct===op.correct && me.acc===op.acc && me.wpm===op.wpm;
-  $("resultEmoji").textContent = tie ? "🤝" : (iWin ? "🏆" : "😤");
-  $("resultTitle").innerHTML = tie ? "Draw!" : (iWin ? `<span class="crown">${escapeHtml(state.myName)}</span> Wins! 🎉` : `${escapeHtml(state.oppName)} Wins!`);
-  $("resultSub").textContent = tie ? "Dead heat! Rematch to find the real winner 😎"
+  const racers = Object.values(state.players).filter(p=>!p.left && p.final);
+  racers.sort((a,b)=> (b.final.correct - a.final.correct) || (b.final.acc - a.final.acc) || (b.final.wpm - a.final.wpm));
+  const winner = racers[0];
+  const iWin = winner && winner.id === state.myId;
+  state.series[winner.id] = (state.series[winner.id] || 0) + 1;
+  const seriesChamp = (state.series[winner.id] || 0) >= SERIES_TARGET;
+  state.seriesOver = seriesChamp;
+  if(iWin){
+    totalWins = store.get("tr_wins", 0) + 1; store.set("tr_wins", totalWins);
+    const best = store.get("tr_best", null);
+    const elapsed = Math.min((Date.now()-state.startAt)/1000, 60);
+    if(!best || state.myFinal.wpm > best.wpm)
+      store.set("tr_best", { wpm: state.myFinal.wpm, correct: state.myFinal.correct, durationSec: Math.round(elapsed), acc: state.myFinal.acc });
+    sndWin(); confetti();
+  } else sndLose();
+  saveToLeaderboard(state.myFinal.wpm, state.myFinal.acc, iWin);
+  state.resultData = { winner, racers, iWin, seriesChamp };
+  $("resultEmoji").textContent = seriesChamp ? "👑" : (iWin ? "🏆" : "😤");
+  $("resultStage").innerHTML =
+    `<div>${winner.car}</div>` +
+    (racers[1] ? `<div class="loser-car">${racers[1].car}<span class="smoke">💨</span></div>` : "");
+  $("resultTitle").innerHTML = seriesChamp
+    ? `<span class="crown">${escapeHtml(winner.name)}</span> — SERIES CHAMPION! 👑`
+    : (iWin ? `<span class="crown">${escapeHtml(winner.name)}</span> Wins! 🎉` : `${escapeHtml(winner.name)} Wins!`);
+  $("resultSub").textContent = seriesChamp ? "First to " + SERIES_TARGET + " race wins takes the series!"
     : iWin ? "You win! Your fingers are on fire 🔥" : "You lose this one — win the rematch! 💪";
-  $("rowYou").innerHTML = `<td><b>${escapeHtml(state.myName)}</b> (You) ${iWin && !tie ? "👑":""}</td><td>${me.wpm}</td><td>${me.acc}%</td><td>${me.correct}</td><td>${me.progress}%</td>`;
-  $("rowOpp").innerHTML = `<td><b>${escapeHtml(state.oppName)}</b> ${!iWin && !tie ? "👑":""}</td><td>${op.wpm}</td><td>${op.acc}%</td><td>${op.correct}</td><td>${op.progress}%</td>`;
-  $("resultStatus").textContent = state.mode==="guest" ? "Tap Rematch — the host will start a new race" : "";
+  $("seriesLineResult").textContent = seriesText();
+  $("resultRows").innerHTML = racers.map((p,i)=>
+    `<tr><td>${i===0 ? "👑 " : ""}<b>${escapeHtml(p.name)}</b>${p.id===state.myId ? " (You)" : ""}</td><td>${p.final.wpm}</td><td>${p.final.acc}%</td><td>${p.final.correct}</td><td>${p.final.progress}%</td></tr>`).join("");
+  $("btnRematch").textContent = seriesChamp ? "🔁 New Series (New Text)" : "🔁 Rematch (New Text)";
+  $("resultStatus").textContent = state.mode==="online" && !state.isHost ? "Tap Rematch — the host will start the next race" : "";
   showScreen("result");
-  if(iWin && !tie) confetti();
 }
 function confetti(){
   const em = ["🎉","✨","🎊","⭐"]; let n=0;
@@ -662,51 +964,92 @@ function confetti(){
   }, 70);
 }
 
-/* ================= SOUND ================= */
-let actx = null;
-function beep(freq){
-  try{
-    actx = actx || new (window.AudioContext||window.webkitAudioContext)();
-    const o = actx.createOscillator(), g = actx.createGain();
-    o.frequency.value = freq; o.connect(g); g.connect(actx.destination);
-    g.gain.setValueAtTime(0.12, actx.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime+0.18);
-    o.start(); o.stop(actx.currentTime+0.2);
-  }catch(e){}
+/* ================= SHARE CARD ================= */
+function shareResult(){
+  const r = state.resultData; if(!r) return;
+  const cv = $("shareCanvas"), ctx = cv.getContext("2d");
+  const grad = ctx.createLinearGradient(0,0,1080,1080);
+  grad.addColorStop(0, "#151b2e"); grad.addColorStop(1, "#0b0f1a");
+  ctx.fillStyle = grad; ctx.fillRect(0,0,1080,1080);
+  ctx.strokeStyle = "#ffa502"; ctx.lineWidth = 10; ctx.strokeRect(30,30,1020,1020);
+  ctx.textAlign = "center"; ctx.fillStyle = "#f1f2f6";
+  ctx.font = "900 92px 'Segoe UI', sans-serif";
+  ctx.fillText("🏎️ TypeRace Live", 540, 170);
+  ctx.font = "150px sans-serif"; ctx.fillText(r.iWin ? "🏆" : "🏁", 540, 360);
+  ctx.font = "900 84px 'Segoe UI', sans-serif"; ctx.fillStyle = "#ffa502";
+  ctx.fillText(r.winner.name + " Wins!", 540, 480);
+  ctx.fillStyle = "#f1f2f6"; ctx.font = "900 170px 'Segoe UI', sans-serif";
+  ctx.fillText(state.myFinal.wpm + "", 540, 680);
+  ctx.font = "700 52px 'Segoe UI', sans-serif"; ctx.fillStyle = "#a4b0be";
+  ctx.fillText("WPM  •  " + state.myFinal.acc + "% accuracy", 540, 750);
+  ctx.font = "600 44px 'Segoe UI', sans-serif";
+  const others = r.racers.filter(p=>p.id !== state.myId).map(p=>p.name + " " + p.final.wpm + " WPM").join("  •  ");
+  if(others) ctx.fillText("vs " + others, 540, 840);
+  ctx.font = "600 38px 'Segoe UI', sans-serif"; ctx.fillStyle = "#57648f";
+  ctx.fillText("typerace-live.vercel.app", 540, 950);
+  ctx.fillText("Made by Fayzur Rahman Hasib", 540, 1005);
+  cv.toBlob(async blob=>{
+    const file = new File([blob], "typerace-result.png", { type: "image/png" });
+    if(navigator.canShare && navigator.canShare({ files: [file] })){
+      try{ await navigator.share({ files: [file], title: "My TypeRace Result" }); return; }catch(e){}
+    }
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = "typerace-result.png"; a.click();
+    toast("Result card downloaded 📸 Share it anywhere!");
+  }, "image/png");
 }
 
-/* ================= BUTTONS ================= */
+/* ================= BUTTONS / INIT ================= */
+document.querySelectorAll("[data-bot]").forEach(b=>{
+  b.onclick = ()=>startSolo("bot", b.dataset.bot);
+});
+$("btnGhost").onclick = ()=>startSolo("ghost");
 $("btnCreate").onclick = createRoom;
 $("btnJoin").onclick = ()=>joinRoom($("joinCode").value);
-$("btnBot").onclick = startBotRace;
 $("btnStart").onclick = ()=>{ if(state.oppJoined) hostStartRace(); };
 $("btnLeaveLobby").onclick = ()=>location.href = location.pathname;
 $("btnHome").onclick = ()=>location.href = location.pathname;
-$("btnCopyCode").onclick = ()=>{
-  navigator.clipboard.writeText(state.roomCode||"").then(()=>toast("Code copied 📋"));
-};
+$("btnCopyCode").onclick = ()=>{ navigator.clipboard.writeText(state.roomCode||"").then(()=>toast("Code copied 📋")); };
 $("btnCopyLink").onclick = ()=>{
   const link = location.origin + location.pathname + "?room=" + (state.roomCode||"");
   navigator.clipboard.writeText(link).then(()=>toast("Invite link copied 🔗"));
 };
 $("btnRematch").onclick = ()=>{
-  if(state.mode==="bot"){ startBotRace(); }
-  else if(state.isHost){ hostStartRace(); }
-  else {
-    sendMsg({type:"rematch_request"});
-    $("resultStatus").textContent = "Rematch request sent to the host… ⏳";
-  }
+  if(state.seriesOver){ state.series = {}; state.seriesOver = false; }
+  if(state.mode==="bot") startSolo("bot", state.botLevel);
+  else if(state.mode==="ghost") startSolo("ghost");
+  else if(state.isHost) hostStartRace();
+  else { sendMsg({type:"rematch_request", from: state.myId}); $("resultStatus").textContent = "Rematch request sent to the host… ⏳"; }
 };
+$("btnShare").onclick = shareResult;
+$("btnSound").onclick = ()=>{
+  state.muted = !state.muted; store.set("tr_muted", state.muted);
+  $("btnSound").textContent = state.muted ? "🔇" : "🔊";
+};
+document.querySelectorAll("[data-react]").forEach(b=>{
+  b.onclick = ()=>{
+    floatEmoji(b.dataset.react); tone(740, 0.08, "sine", 0.06);
+    sendMsg({type:"react", from: state.myId, emoji: b.dataset.react});
+  };
+});
+document.querySelectorAll("[data-taunt]").forEach(b=>{
+  b.onclick = ()=>{
+    showTaunt(state.myId, b.dataset.taunt);
+    sendMsg({type:"taunt", from: state.myId, text: b.dataset.taunt});
+  };
+});
 $("joinCode").addEventListener("keydown", e=>{ if(e.key==="Enter") $("btnJoin").click(); });
 window.addEventListener("beforeunload", ()=>{
   try{
-    sendMsg({type:"leave"});
+    sendMsg({type:"leave", from: state.myId});
     if(state.isHost) state.conns.forEach(c=>{
       if(c.up) c.client.publish(presenceTopic(), "", {retain:true, qos:1});
     });
   }catch(e){}
 });
-
+$("btnSound").textContent = state.muted ? "🔇" : "🔊";
+renderCarGrid();
+renderLeaderboard();
 (function(){
   const code = new URLSearchParams(location.search).get("room");
   if(code){ $("joinCode").value = code.toUpperCase(); toast("You came from an invite link! Enter your name and tap Join Room 👇"); }

@@ -13,9 +13,9 @@ No friend around? Use **Solo Race vs Bot** 🤖 to practice against a robot race
 
 ## Tech
 - Single-file static web app (`index.html`) — no build step, no backend cost.
-- Real-time multiplayer via **WebRTC (PeerJS)** peer-to-peer data channels — host/guest connect directly with a room code.
+- Real-time multiplayer (2-4 players) via **MQTT over secure WebSocket** through public brokers — the host relays guest updates so everyone stays in sync.
 - Anti-cheat: paste is blocked, and voice dictation is blocked too — input is accepted only one character at a time (keyboards send 1 char per event; dictation and word-suggestions send whole words), with a warning on every blocked attempt.
-- Scoring: winner = most correct characters in 60s, tie-break on accuracy, then WPM.
+- Scoring: winner = most correct characters in 60s, tie-break on accuracy, then WPM. Best-of-3 series, nitro streaks, golden power words that jinx rivals, live emoji reactions and taunts, sound effects, bot difficulty levels, ghost racing against your best run, unlockable cars, a shareable result card and a local top-races leaderboard.
 
 ## Run locally
 Just open `index.html` in a browser, or:

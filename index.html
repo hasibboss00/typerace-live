@@ -487,7 +487,7 @@ function startBotRace(){
 }
 function startRace(text, startAt){
   state.text = text; state.startAt = startAt; state.inLobby = false;
-  state.typed = ""; state.correct = 0; state.totalTyped = 0;
+  state.typed = ""; state.correct = 0; state.totalTyped = 0; state.violations = 0;
   state.racing = false; state.finished = false; state.resultShown = false;
   state.myFinal = null; state.oppFinal = null; state.botTyped = 0;
   state.opp = { progress:0, wpm:0, acc:100, correct:0, finished:false };
@@ -543,7 +543,9 @@ $("typingInput").addEventListener("input", e=>{
   if(!state.racing || state.finished) return;
   let v = e.target.value;
   if(v.length > state.text.length) v = v.slice(0, state.text.length);
-  if(v.length - state.typed.length > 3){ v = state.typed; e.target.value = v; toast("No pasting 😄 Type it yourself!"); }
+  if(v.length - state.typed.length > 1){ // more than 1 char at once = voice dictation / paste / word suggestion
+    e.target.value = state.typed; voiceBlock(); return;
+  }
   state.typed = v; e.target.value = v;
   state.totalTyped = Math.max(state.totalTyped, v.length);
   state.correct = 0;
@@ -556,6 +558,24 @@ $("typingInput").addEventListener("input", e=>{
   if(v.length >= state.text.length) endRace(false);
 });
 $("typingInput").addEventListener("paste", e=>{ e.preventDefault(); toast("Paste is disabled 😄"); });
+
+/* ===== Anti voice-typing: a keyboard sends 1 character per event, dictation
+   sends whole words at once — anything bigger is blocked before it lands ===== */
+function voiceBlock(){
+  state.violations = (state.violations || 0) + 1;
+  toast("🎙️ Voice typing is not allowed — use the keyboard!");
+  if(state.violations >= 3) $("raceStatus").textContent = "🎙️ Voice input blocked " + state.violations + " times — keyboard only!";
+}
+$("typingInput").addEventListener("beforeinput", e=>{
+  if(!state.racing || state.finished) return;
+  const t = e.inputType || "";
+  if(t === "insertLineBreak" || t === "insertParagraph"){ e.preventDefault(); return; }
+  if(t.startsWith("delete")) return;
+  if(t === "insertFromPaste" || t === "insertFromDrop" || t === "insertDictation" ||
+     t === "insertReplacementText" || (e.data && e.data.length > 1)){
+    e.preventDefault(); voiceBlock();
+  }
+});
 
 let lastSent = 0;
 function sendProgress(){

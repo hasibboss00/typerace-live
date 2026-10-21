@@ -14,7 +14,7 @@ No friend around? Use **Solo Race vs Bot** 🤖 to practice against a robot race
 ## Tech
 - Single-file static web app (`index.html`) — no build step, no backend cost.
 - Real-time multiplayer via **WebRTC (PeerJS)** peer-to-peer data channels — host/guest connect directly with a room code.
-- Anti-cheat: paste is blocked, big pasted chunks are rejected.
+- Anti-cheat: paste is blocked, and voice dictation is blocked too — input is accepted only one character at a time (keyboards send 1 char per event; dictation and word-suggestions send whole words), with a warning on every blocked attempt.
 - Scoring: winner = most correct characters in 60s, tie-break on accuracy, then WPM.
 
 ## Run locally

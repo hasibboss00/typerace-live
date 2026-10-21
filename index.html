@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TypeRace — 2 Player Typing Racing Game</title>
+<meta name="description" content="Race a friend in a 1-minute typing speed battle. Same text, fastest fingers win!">
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  :root{
+    --bg:#0b0f1a; --card:#151b2e; --card2:#1c2440; --accent:#ff4757; --accent2:#2ed573;
+    --blue:#3742fa; --blue2:#54a0ff; --gold:#ffa502; --text:#f1f2f6; --muted:#a4b0be;
+  }
+  body{ font-family:'Segoe UI',system-ui,-apple-system,sans-serif; background:var(--bg); color:var(--text); min-height:100vh;
+    background-image:radial-gradient(ellipse at top, #1a2340 0%, var(--bg) 60%); }
+  .wrap{ max-width:860px; margin:0 auto; padding:20px 16px 48px; }
+  header{ text-align:center; padding:22px 0 6px; }
+  .logo{ font-size:42px; font-weight:900; letter-spacing:1px; }
+  .logo .red{ color:var(--accent); } .logo .green{ color:var(--accent2); }
+  .tagline{ color:var(--muted); margin-top:6px; font-size:15px; }
+  .card{ background:var(--card); border:1px solid #263052; border-radius:18px; padding:24px; margin-top:20px;
+    box-shadow:0 12px 32px rgba(0,0,0,.35); }
+  .screen{ display:none; } .screen.active{ display:block; animation:fade .3s ease; }
+  @keyframes fade{ from{opacity:0; transform:translateY(8px)} to{opacity:1; transform:none} }
+  h2{ font-size:22px; margin-bottom:12px; }
+  p.sub{ color:var(--muted); font-size:14px; line-height:1.55; }
+  label{ display:block; font-size:13px; color:var(--muted); margin:14px 0 6px; font-weight:600; text-transform:uppercase; letter-spacing:.6px; }
+  input[type=text]{ width:100%; padding:13px 14px; border-radius:12px; border:2px solid #2c3757; background:var(--card2);
+    color:var(--text); font-size:16px; outline:none; }
+  input[type=text]:focus{ border-color:var(--blue2); }
+  .btn{ display:block; width:100%; padding:14px; border:none; border-radius:12px; font-size:16px; font-weight:800;
+    cursor:pointer; margin-top:12px; transition:transform .1s, filter .15s; color:#fff; }
+  .btn:hover{ filter:brightness(1.1); } .btn:active{ transform:scale(.98); }
+  .btn:disabled{ opacity:.5; cursor:not-allowed; }
+  .btn-red{ background:linear-gradient(135deg,#ff4757,#e84118); }
+  .btn-blue{ background:linear-gradient(135deg,#3742fa,#2f3542); background:linear-gradient(135deg,#3742fa,#5352ed); }
+  .btn-green{ background:linear-gradient(135deg,#2ed573,#1e9e57); }
+  .btn-ghost{ background:transparent; border:2px solid #2c3757; color:var(--text); }
+  .row{ display:flex; gap:12px; } .row .btn{ flex:1; }
+  .or{ text-align:center; color:var(--muted); margin:16px 0 2px; font-size:13px; font-weight:700; letter-spacing:2px; }
+  .code-big{ font-size:44px; font-weight:900; letter-spacing:10px; text-align:center; color:var(--gold);
+    background:var(--card2); border:2px dashed #3d4a75; border-radius:14px; padding:14px 8px; margin:14px 0; }
+  .players{ display:flex; gap:12px; margin-top:14px; }
+  .player-slot{ flex:1; background:var(--card2); border-radius:12px; padding:14px; text-align:center; font-weight:700; }
+  .player-slot .car{ font-size:34px; display:block; margin-bottom:4px; }
+  .player-slot.empty{ color:var(--muted); font-weight:500; border:2px dashed #2c3757; background:transparent; }
+  .status{ text-align:center; color:var(--gold); font-size:14px; margin-top:14px; min-height:20px; font-weight:600; }
+  /* RACE TRACK */
+  .track{ background:#11162a; border-radius:14px; padding:16px 12px 10px; margin-top:6px; position:relative; overflow:hidden; }
+  .lane{ position:relative; height:56px; border-bottom:3px dashed #3d4a75; margin-bottom:8px; }
+  .lane:last-child{ border-bottom:none; }
+  .lane .who{ position:absolute; left:0; top:-2px; font-size:11px; font-weight:800; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; }
+  .racer{ position:absolute; bottom:4px; left:0; font-size:36px; transition:left .25s ease; transform:scaleX(-1); line-height:1; z-index:2; }
+  .finish{ position:absolute; right:6px; top:0; bottom:0; font-size:20px; writing-mode:vertical-rl; opacity:.9; }
+  .lane-bar{ position:absolute; bottom:0; left:0; height:4px; border-radius:2px; transition:width .25s ease; }
+  .hud{ display:flex; gap:10px; margin-top:16px; }
+  .stat{ flex:1; background:var(--card2); border-radius:12px; padding:10px 6px; text-align:center; }
+  .stat .num{ font-size:24px; font-weight:900; } .stat .lbl{ font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.6px; font-weight:700; }
+  .timer-wrap{ height:10px; background:#232c4b; border-radius:6px; overflow:hidden; margin-top:16px; }
+  .timer-bar{ height:100%; width:100%; background:linear-gradient(90deg,var(--accent2),var(--gold),var(--accent)); transition:width 1s linear; }
+  #raceText{ font-family:'Courier New',monospace; font-size:20px; line-height:1.75; letter-spacing:.4px;
+    background:var(--card2); border-radius:12px; padding:18px; margin-top:16px; user-select:none; word-break:break-word; }
+  #raceText span{ color:#78839e; border-radius:3px; }
+  #raceText span.correct{ color:var(--accent2); }
+  #raceText span.wrong{ color:#fff; background:var(--accent); }
+  #raceText span.current{ background:#3d4a75; color:#fff; box-shadow:0 0 0 1px #57648f; }
+  #typingInput{ width:100%; margin-top:14px; padding:14px; font-size:17px; font-family:'Courier New',monospace;
+    border-radius:12px; border:2px solid #2c3757; background:#0e1322; color:var(--text); outline:none; resize:none; }
+  #typingInput:focus{ border-color:var(--accent2); }
+  #countdown{ position:fixed; inset:0; display:none; align-items:center; justify-content:center; z-index:50;
+    background:rgba(5,8,16,.82); font-size:110px; font-weight:900; color:var(--gold); text-shadow:0 8px 40px rgba(0,0,0,.6); }
+  #countdown.show{ display:flex; }
+  /* RESULT */
+  .trophy{ font-size:74px; text-align:center; }
+  .winner-name{ text-align:center; font-size:30px; font-weight:900; margin-top:6px; }
+  .vs-table{ width:100%; margin-top:18px; border-collapse:collapse; }
+  .vs-table th,.vs-table td{ padding:11px 8px; text-align:center; border-bottom:1px solid #263052; font-size:15px; }
+  .vs-table th{ color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.6px; }
+  .crown{ color:var(--gold); }
+  .toast{ position:fixed; left:50%; bottom:22px; transform:translateX(-50%) translateY(80px); background:#232c4b; color:#fff;
+    padding:11px 18px; border-radius:999px; font-size:14px; font-weight:600; z-index:60; transition:transform .3s; box-shadow:0 10px 30px rgba(0,0,0,.4); max-width:92vw; text-align:center;}
+  .toast.show{ transform:translateX(-50%) translateY(0); }
+  footer{ text-align:center; color:#57648f; font-size:12px; margin-top:26px; }
+  @media (max-width:560px){ .logo{font-size:32px} #raceText{font-size:17px} .racer{font-size:29px} .code-big{font-size:32px; letter-spacing:6px} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">🏎️ Type<span class="red">Race</span> <span class="green">Live</span></div>
+    <div class="tagline">1 minute. Same text. 2 racers. Fastest fingers win the trophy 🏆</div>
+  </header>
+
+  <!-- HOME -->
+  <section id="screen-home" class="screen active">
+    <div class="card">
+      <h2>🚦 Race shuru kori?</h2>
+      <p class="sub">Friend er sathe live race koro — duijoneri kache <b>ekoi text</b> jabe, 60 second time. Je beshi fast ar correct type korbe, tar gar-i finish line age par hobe!</p>
+      <label>Tomar naam</label>
+      <input type="text" id="playerName" placeholder="e.g. Hasib" maxlength="16">
+      <button class="btn btn-red" id="btnCreate">🏠 Create Room (Host)</button>
+      <div class="or">— OR —</div>
+      <label>Friend er room code</label>
+      <input type="text" id="joinCode" placeholder="e.g. K7X2P9" maxlength="6" style="text-transform:uppercase">
+      <button class="btn btn-blue" id="btnJoin">🚗 Join Room</button>
+      <div class="or">— PRACTICE —</div>
+      <button class="btn btn-ghost" id="btnBot">🤖 Solo Race vs Bot</button>
+      <div class="status" id="homeStatus"></div>
+    </div>
+  </section>
+
+  <!-- LOBBY -->
+  <section id="screen-lobby" class="screen">
+    <div class="card">
+      <h2>🏁 Race Lobby</h2>
+      <p class="sub">Ei code ta friend ke dao, se Join Room e code bosiye dhukbe. Duijon ready hole host race start korbe.</p>
+      <div class="code-big" id="lobbyCode">------</div>
+      <div class="row">
+        <button class="btn btn-ghost" id="btnCopyCode">📋 Code Copy</button>
+        <button class="btn btn-ghost" id="btnCopyLink">🔗 Invite Link Copy</button>
+      </div>
+      <div class="players">
+        <div class="player-slot" id="slotYou"><span class="car">🔴🏎️</span><span class="pname">You</span></div>
+        <div class="player-slot empty" id="slotOpp"><span class="car">⏳</span><span class="pname">Friend er jonno wait...</span></div>
+      </div>
+      <button class="btn btn-green" id="btnStart" disabled>▶ Start Race</button>
+      <button class="btn btn-ghost" id="btnLeaveLobby">⬅ Charo / Leave</button>
+      <div class="status" id="lobbyStatus"></div>
+    </div>
+  </section>
+
+  <!-- RACE -->
+  <section id="screen-race" class="screen">
+    <div class="card">
+      <div class="track">
+        <div class="lane">
+          <span class="who" id="laneYouName">You</span>
+          <div class="lane-bar" id="barYou" style="background:var(--accent); width:0%"></div>
+          <div class="racer" id="carYou" style="left:0%">🏎️</div>
+          <div class="finish">🏁</div>
+        </div>
+        <div class="lane">
+          <span class="who" id="laneOppName">Opponent</span>
+          <div class="lane-bar" id="barOpp" style="background:var(--blue2); width:0%"></div>
+          <div class="racer" id="carOpp" style="left:0%">🏎️</div>
+          <div class="finish">🏁</div>
+        </div>
+      </div>
+      <div class="hud">
+        <div class="stat"><div class="num" id="statTime">60</div><div class="lbl">⏱ Seconds</div></div>
+        <div class="stat"><div class="num" id="statWpm">0</div><div class="lbl">⚡ Your WPM</div></div>
+        <div class="stat"><div class="num" id="statAcc">100%</div><div class="lbl">🎯 Accuracy</div></div>
+        <div class="stat"><div class="num" id="statOppWpm">0</div><div class="lbl">👀 Rival WPM</div></div>
+      </div>
+      <div class="timer-wrap"><div class="timer-bar" id="timerBar"></div></div>
+      <div id="raceText"></div>
+      <textarea id="typingInput" rows="2" placeholder="Countdown shesh hole ekhane type koro..." autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
+      <div class="status" id="raceStatus"></div>
+    </div>
+  </section>
+
+  <!-- RESULT -->
+  <section id="screen-result" class="screen">
+    <div class="card">
+      <div class="trophy" id="resultEmoji">🏆</div>
+      <div class="winner-name" id="resultTitle">You Win!</div>
+      <p class="sub" style="text-align:center" id="resultSub"></p>
+      <table class="vs-table">
+        <tr><th>Player</th><th>WPM</th><th>Accuracy</th><th>Correct Chars</th><th>Progress</th></tr>
+        <tr id="rowYou"></tr>
+        <tr id="rowOpp"></tr>
+      </table>
+      <button class="btn btn-red" id="btnRematch">🔁 Rematch (New Text)</button>
+      <button class="btn btn-ghost" id="btnHome">🏠 Home</button>
+      <div class="status" id="resultStatus"></div>
+    </div>
+  </section>
+
+  <footer>Made with ❤️ — TypeRace Live • Every race = a brand new text • No sign-up needed</footer>
+</div>
+<div id="countdown"></div>
+<div class="toast" id="toast"></div>
+<script>
+"use strict";
+/* ================= TEXT BANK — every race gets a fresh one ================= */
+const TEXTS = [
+  "The quick brown fox jumps over the lazy dog while the sun rises slowly over the quiet hills and the birds begin their morning song in the tall green trees near the river bank.",
+  "Practice makes a person perfect but nobody is perfect so why practice at all just keep typing fast and never look back at the keyboard because speed comes from trust and rhythm.",
+  "A journey of a thousand miles begins with a single step and every great racer was once a beginner who refused to give up even when the road felt long and the night felt dark.",
+  "Technology has changed the way we live work and play but the simple joy of a good story told around a warm fire on a cold winter evening will never go out of style for anyone.",
+  "The rain fell softly on the tin roof while grandmother told stories of brave sailors hidden treasure and faraway islands where the mango trees grow taller than the village houses.",
+  "Success is not final and failure is not fatal it is the courage to continue that counts so keep your eyes on the finish line and your fingers moving faster than your doubts can follow.",
+  "In a small village beside the wide river a young fisherman dreams of sailing beyond the horizon where the sky meets the water and the stars guide every boat safely back home again.",
+  "Learning to type quickly is like learning to play the piano your fingers must dance across the keys without thinking while your mind stays calm and focused on the music ahead.",
+  "The old lighthouse stood on the rocky shore for a hundred years guiding ships through the storm with its bright beam while the keeper watched the waves crash below every single night.",
+  "Every champion was once a contender who refused to give up and every fast typist was once a slow beginner who practiced a little every day until the keys felt like old friends.",
+  "Dhaka wakes up early with the sound of rickshaw bells busy streets and the smell of fresh tea while thousands of people rush toward their dreams in the golden morning light.",
+  "The library was quiet except for the turning of pages and the soft ticking of the clock as the students prepared for their exams with strong coffee and even stronger determination.",
+  "When the monsoon arrives the fields turn green the rivers rise and children splash in the puddles laughing loudly while farmers smile at the promise of a rich and golden harvest.",
+  "A great video editor knows that timing is everything one perfect cut can make the audience laugh cry or hold their breath and that magic lives in the smallest details of every frame.",
+  "The train rolled through the countryside past green paddy fields small stations and waving children while the passengers shared stories snacks and laughter on the long journey home.",
+  "Curiosity is the engine of achievement it pushes us to ask questions explore new places meet new people and discover that the world is far bigger and kinder than we first imagined.",
+  "The little robot rolled across the shiny floor beeping happily as it learned to dance spin and wave at the amazed crowd who clapped and cheered for every clever new trick it performed.",
+  "Hard work beats talent when talent does not work hard so wake up early stay focused be patient with the process and trust that small daily efforts grow into something truly great.",
+  "On top of the mountain the air was thin and cold but the view of the valley below with its winding river and tiny villages made every difficult step of the climb completely worth it.",
+  "The baker opened his shop before dawn and soon the warm smell of fresh bread drifted through the street waking the whole neighborhood with the promise of a delicious morning treat.",
+  "Friendship is not about who you have known the longest it is about who walked into your life said I am here for you and proved it through every storm and every sunny day that followed.",
+  "The football match went down to the final minute and when the young striker scored the winning goal the entire stadium exploded with joy flags waving and drums beating like thunder.",
+  "Reading books takes you to places you have never been introduces you to people you will never meet and teaches you lessons that stay with you long after the final page is turned.",
+  "The programmer stared at the screen for hours chasing a tiny bug until suddenly the answer appeared like lightning and the whole program came alive with a single correct keystroke.",
+  "Summer afternoons in the village meant mangoes cricket under the big banyan tree and endless stories that lasted until the fireflies came out and the stars filled the dark blue sky."
+];
+let lastTextIdx = -1;
+function pickText(){
+  let i; do { i = Math.floor(Math.random()*TEXTS.length); } while(i===lastTextIdx);
+  lastTextIdx = i; return TEXTS[i];
+}
+
+/* ================= STATE ================= */
+const PEER_PREFIX = "typerace-live-v1-";
+const RACE_SECONDS = 60;
+const $ = id => document.getElementById(id);
+const state = {
+  mode: null,            // 'host' | 'guest' | 'bot'
+  peer: null, conn: null,
+  myName: "Player", oppName: "Opponent",
+  isHost: false, oppJoined: false,
+  text: "", typed: "", correct: 0, totalTyped: 0,
+  racing: false, finished: false,
+  startAt: 0, timerInt: null, botInt: null,
+  opp: { progress:0, wpm:0, acc:100, correct:0, finished:false },
+  myFinal: null, oppFinal: null, resultShown: false,
+  botWpm: 45, botTyped: 0
+};
+
+function toast(msg, ms=2600){
+  const t = $("toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(t._h); t._h = setTimeout(()=>t.classList.remove("show"), ms);
+}
+function showScreen(name){
+  document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));
+  $("screen-"+name).classList.add("active");
+}
+function myName(){ return ($("playerName").value.trim() || "Player").slice(0,16); }
+function makeCode(){
+  const chars = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; let c="";
+  for(let i=0;i<6;i++) c += chars[Math.floor(Math.random()*chars.length)];
+  return c;
+}
+function stats(){
+  const elapsedMin = Math.max((Date.now()-state.startAt)/60000, 0.001);
+  const wpm = state.racing || state.finished ? Math.round((state.correct/5)/elapsedMin) : 0;
+  const acc = state.totalTyped ? Math.round(state.correct/state.totalTyped*100) : 100;
+  return { wpm: Math.min(wpm, 250), acc, correct: state.correct,
+           progress: Math.round(state.typed.length/state.text.length*100) || 0 };
+}
+
+/* ================= PEER: HOST ================= */
+function createRoom(){
+  state.myName = myName(); state.isHost = true; state.mode = "host";
+  const code = makeCode();
+  $("homeStatus").textContent = "Room banano hocche...";
+  state.peer = new Peer(PEER_PREFIX + code);
+  state.peer.on("open", ()=>{
+    $("lobbyCode").textContent = code;
+    $("slotYou").querySelector(".pname").textContent = state.myName + " (Host) 👑";
+    $("slotOpp").className = "player-slot empty";
+    $("slotOpp").innerHTML = '<span class="car">⏳</span><span class="pname">Friend er jonno wait...</span>';
+    $("btnStart").disabled = true;
+    $("lobbyStatus").textContent = "Friend join korlei Start button active hobe";
+    state.roomCode = code;
+    showScreen("lobby");
+    history.replaceState(null,"","?room="+code);
+  });
+  state.peer.on("connection", conn=>{
+    state.conn = conn;
+    conn.on("data", d=>handleData(d));
+    conn.on("open", ()=>{ conn.send({type:"welcome", name: state.myName}); });
+    conn.on("close", ()=>onOppLeft());
+  });
+  state.peer.on("error", err=>{
+    if(err.type==="unavailable-id"){ createRoom(); }
+    else { $("homeStatus").textContent = "Connection error: " + err.type + " — abar try koro"; }
+  });
+}
+
+/* ================= PEER: GUEST ================= */
+function joinRoom(code){
+  code = (code||"").trim().toUpperCase();
+  if(code.length!==6){ toast("6 character er code dao ⚠️"); return; }
+  state.myName = myName(); state.isHost = false; state.mode = "guest"; state.roomCode = code;
+  $("homeStatus").textContent = "Room e join hocche...";
+  state.peer = new Peer();
+  state.peer.on("open", ()=>{
+    const conn = state.peer.connect(PEER_PREFIX + code, {reliable:true});
+    state.conn = conn;
+    conn.on("open", ()=>{ conn.send({type:"join", name: state.myName}); });
+    conn.on("data", d=>handleData(d));
+    conn.on("close", ()=>onOppLeft());
+    conn.on("error", ()=>{ $("homeStatus").textContent = "Connect hote parlo na — code ta check koro"; });
+    setTimeout(()=>{
+      if(!state.oppJoined && state.mode==="guest" && !state.racing){
+        $("homeStatus").textContent = "Room pawa jay nai 😕 Code thik ache to? Host room baniyeche to?";
+      }
+    }, 7000);
+  });
+  state.peer.on("error", err=>{
+    if(err.type==="peer-unavailable") $("homeStatus").textContent = "Ei code e kono room nai 😕 Code check kore abar try koro";
+    else $("homeStatus").textContent = "Connection error: " + err.type;
+  });
+}
+
+function handleData(d){
+  if(!d || !d.type) return;
+  if(d.type==="welcome"){ // guest receives host name
+    state.oppName = d.name; state.oppJoined = true;
+    enterLobbyGuest();
+  }
+  if(d.type==="join"){ // host receives guest
+    state.oppName = d.name; state.oppJoined = true;
+    $("slotOpp").className = "player-slot";
+    $("slotOpp").innerHTML = '<span class="car">🔵🏎️</span><span class="pname"></span>';
+    $("slotOpp").querySelector(".pname").textContent = state.oppName;
+    $("btnStart").disabled = false;
+    $("lobbyStatus").textContent = state.oppName + " join koreche! Ekhon Start dao 🎉";
+    toast(state.oppName + " join koreche! 🎉");
+    if(state.conn) state.conn.send({type:"welcome", name: state.myName});
+  }
+  if(d.type==="race_start"){ startRace(d.text, d.startAt); }
+  if(d.type==="progress"){
+    state.opp = { ...state.opp, progress:d.progress, wpm:d.wpm, acc:d.acc, correct:d.correct };
+    renderOpp();
+  }
+  if(d.type==="finished"){
+    state.oppFinal = d.stats; state.opp.finished = true; state.opp.progress = d.stats.progress;
+    renderOpp(); maybeShowResult();
+  }
+  if(d.type==="rematch_request"){
+    toast(state.oppName + " rematch chaiche! 🔁");
+    if(state.isHost) hostStartRace();
+  }
+  if(d.type==="leave"){ onOppLeft(); }
+}
+function enterLobbyGuest(){
+  $("lobbyCode").textContent = state.roomCode;
+  $("slotYou").querySelector(".pname").textContent = state.myName;
+  $("slotOpp").className = "player-slot";
+  $("slotOpp").innerHTML = '<span class="car">👑🏎️</span><span class="pname"></span>';
+  $("slotOpp").querySelector(".pname").textContent = state.oppName + " (Host)";
+  $("btnStart").disabled = true;
+  $("lobbyStatus").textContent = "Host race start korar wait korcho... ⏳";
+  showScreen("lobby");
+  toast("Room e join hoyecho! ✅");
+}
+function onOppLeft(){
+  if(state.racing) endRace(true);
+  state.oppJoined = false;
+  toast("Opponent chole geche 👋");
+  if(state.mode!=="bot") showScreen("home");
+}
+
+/* ================= RACE ================= */
+function hostStartRace(){
+  const text = pickText();
+  const startAt = Date.now() + 4000;
+  if(state.conn) state.conn.send({type:"race_start", text, startAt});
+  startRace(text, startAt);
+}
+function startBotRace(){
+  state.mode = "bot"; state.isHost = true; state.oppJoined = true;
+  state.myName = myName(); state.oppName = "Robo Racer 🤖";
+  state.botWpm = 36 + Math.floor(Math.random()*26); // 36-61 WPM bot
+  startRace(pickText(), Date.now()+4000);
+}
+function startRace(text, startAt){
+  state.text = text; state.startAt = startAt;
+  state.typed = ""; state.correct = 0; state.totalTyped = 0;
+  state.racing = false; state.finished = false; state.resultShown = false;
+  state.myFinal = null; state.oppFinal = null; state.botTyped = 0;
+  state.opp = { progress:0, wpm:0, acc:100, correct:0, finished:false };
+  $("laneYouName").textContent = "You • " + state.myName;
+  $("laneOppName").textContent = state.oppName;
+  renderText(); renderOpp();
+  $("carYou").style.left = "0%"; $("barYou").style.width = "0%";
+  $("statWpm").textContent = "0"; $("statAcc").textContent = "100%"; $("statOppWpm").textContent = "0";
+  $("statTime").textContent = RACE_SECONDS; $("timerBar").style.width = "100%";
+  $("raceStatus").textContent = "";
+  const inp = $("typingInput"); inp.value = ""; inp.disabled = true;
+  inp.placeholder = "Ready hou...";
+  showScreen("race");
+  // countdown
+  const cd = $("countdown"); cd.classList.add("show");
+  const tick = ()=>{
+    const left = Math.ceil((startAt - Date.now())/1000);
+    if(left > 0){ cd.textContent = left; beep(440); setTimeout(tick, 200); }
+    else {
+      cd.textContent = "GO! 🚀"; beep(880);
+      setTimeout(()=>cd.classList.remove("show"), 450);
+      beginTyping();
+    }
+  }; tick();
+}
+function beginTyping(){
+  state.racing = true;
+  const inp = $("typingInput"); inp.disabled = false; inp.placeholder = "Type koro ekhane... fast! ⌨️"; inp.focus();
+  const endAt = state.startAt + RACE_SECONDS*1000;
+  clearInterval(state.timerInt);
+  state.timerInt = setInterval(()=>{
+    const remain = Math.max(0, Math.ceil((endAt - Date.now())/1000));
+    $("statTime").textContent = remain;
+    $("timerBar").style.width = (remain/RACE_SECONDS*100) + "%";
+    if(remain<=0) endRace(false);
+  }, 200);
+  if(state.mode==="bot") startBot();
+  sendProgress();
+}
+function renderText(){
+  const typed = state.typed;
+  let html = "";
+  for(let i=0;i<state.text.length;i++){
+    const ch = state.text[i] === " " ? "&nbsp;" : escapeHtml(state.text[i]);
+    if(i < typed.length) html += `<span class="${typed[i]===state.text[i] ? "correct":"wrong"}">${ch}</span>`;
+    else if(i === typed.length) html += `<span class="current">${ch}</span>`;
+    else html += `<span>${ch}</span>`;
+  }
+  $("raceText").innerHTML = html;
+}
+function escapeHtml(c){ return c.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+$("typingInput").addEventListener("input", e=>{
+  if(!state.racing || state.finished) return;
+  let v = e.target.value;
+  if(v.length > state.text.length) v = v.slice(0, state.text.length);
+  // block pasting big chunks
+  if(v.length - state.typed.length > 3){ v = state.typed; e.target.value = v; toast("Paste/cheat cholbe na 😄 Type korei likho!"); }
+  state.typed = v; e.target.value = v;
+  state.totalTyped = Math.max(state.totalTyped, v.length);
+  state.correct = 0;
+  for(let i=0;i<v.length;i++) if(v[i]===state.text[i]) state.correct++;
+  const s = stats();
+  $("carYou").style.left = `calc(${s.progress}% - ${s.progress*0.36}px)`;
+  $("barYou").style.width = s.progress + "%";
+  $("statWpm").textContent = s.wpm; $("statAcc").textContent = s.acc + "%";
+  renderText(); sendProgress();
+  if(v.length >= state.text.length) endRace(false);
+});
+$("typingInput").addEventListener("paste", e=>{ e.preventDefault(); toast("Paste bondho 😄 Haate type koro!"); });
+
+let lastSent = 0;
+function sendProgress(){
+  if(state.mode==="bot" || !state.conn || !state.conn.open) return;
+  const now = Date.now(); if(now - lastSent < 120 && state.racing) return; lastSent = now;
+  const s = stats();
+  state.conn.send({type:"progress", progress:s.progress, wpm:s.wpm, acc:s.acc, correct:s.correct});
+}
+function renderOpp(){
+  $("carOpp").style.left = `calc(${state.opp.progress}% - ${state.opp.progress*0.36}px)`;
+  $("barOpp").style.width = state.opp.progress + "%";
+  $("statOppWpm").textContent = state.opp.wpm;
+}
+
+/* ================= BOT ================= */
+function startBot(){
+  clearInterval(state.botInt);
+  state.botInt = setInterval(()=>{
+    if(!state.racing) { clearInterval(state.botInt); return; }
+    const charsPerTick = (state.botWpm*5/60) * 0.25 * (0.6 + Math.random()*0.9);
+    state.botTyped = Math.min(state.text.length, state.botTyped + charsPerTick);
+    const elapsedMin = Math.max((Date.now()-state.startAt)/60000, 0.001);
+    const correct = Math.floor(state.botTyped * 0.94);
+    state.opp = { progress: Math.round(state.botTyped/state.text.length*100),
+      wpm: Math.round((correct/5)/elapsedMin), acc: 94, correct, finished: state.botTyped>=state.text.length };
+    renderOpp();
+    if(state.botTyped >= state.text.length){
+      state.oppFinal = { ...state.opp };
+      clearInterval(state.botInt);
+      $("raceStatus").textContent = "🤖 Bot finish kore feleche! Tumi shesh koro ba time er wait koro...";
+    }
+  }, 250);
+}
+
+/* ================= END / RESULT ================= */
+function endRace(oppLeft){
+  if(state.finished) return;
+  state.finished = true; state.racing = false;
+  clearInterval(state.timerInt); clearInterval(state.botInt);
+  $("typingInput").disabled = true;
+  const s = stats();
+  state.myFinal = s;
+  if(state.mode!=="bot" && state.conn && state.conn.open)
+    state.conn.send({type:"finished", stats:s});
+  if(state.mode==="bot" && !state.oppFinal)
+    state.oppFinal = { progress: state.opp.progress, wpm: state.opp.wpm, acc: 94, correct: state.opp.correct };
+  if(oppLeft) state.oppFinal = state.oppFinal || { progress: state.opp.progress, wpm: state.opp.wpm, acc: state.opp.acc, correct: state.opp.correct };
+  setTimeout(maybeShowResult, state.mode==="bot" ? 100 : 900);
+}
+function maybeShowResult(){
+  if(state.resultShown || !state.finished) return;
+  if(!state.oppFinal) { // rival still finishing — use last known progress
+    state.oppFinal = { progress: state.opp.progress, wpm: state.opp.wpm, acc: state.opp.acc, correct: state.opp.correct };
+  }
+  showResult();
+}
+function showResult(){
+  state.resultShown = true;
+  const me = state.myFinal, op = state.oppFinal;
+  let iWin;
+  if(me.correct !== op.correct) iWin = me.correct > op.correct;
+  else if(me.acc !== op.acc) iWin = me.acc > op.acc;
+  else iWin = me.wpm >= op.wpm;
+  const tie = me.correct===op.correct && me.acc===op.acc && me.wpm===op.wpm;
+  $("resultEmoji").textContent = tie ? "🤝" : (iWin ? "🏆" : "😤");
+  $("resultTitle").innerHTML = tie ? "Draw!" : (iWin ? `<span class="crown">${escapeHtml(state.myName)}</span> Wins! 🎉` : `${escapeHtml(state.oppName)} Wins!`);
+  $("resultSub").textContent = tie ? "Duijonei soman fast! Rematch diye dekho ke ashole boss 😎"
+    : iWin ? "Tumi jitla! Tomar angul aj agun 🔥" : "Eibar paroni, rematch e hariye dao! 💪";
+  $("rowYou").innerHTML = `<td><b>${escapeHtml(state.myName)}</b> (You) ${iWin && !tie ? "👑":""}</td><td>${me.wpm}</td><td>${me.acc}%</td><td>${me.correct}</td><td>${me.progress}%</td>`;
+  $("rowOpp").innerHTML = `<td><b>${escapeHtml(state.oppName)}</b> ${!iWin && !tie ? "👑":""}</td><td>${op.wpm}</td><td>${op.acc}%</td><td>${op.correct}</td><td>${op.progress}%</td>`;
+  $("resultStatus").textContent = state.mode==="guest" ? "Rematch chaile button chapao — host new race start korbe" : "";
+  showScreen("result");
+  if(iWin && !tie) confetti();
+}
+function confetti(){
+  const em = ["🎉","✨","🎊","⭐"]; let n=0;
+  const iv = setInterval(()=>{
+    const s = document.createElement("div");
+    s.textContent = em[Math.floor(Math.random()*em.length)];
+    s.style.cssText = `position:fixed;top:-30px;left:${Math.random()*100}vw;font-size:${20+Math.random()*22}px;z-index:70;transition:transform 1.6s linear, opacity 1.6s;pointer-events:none`;
+    document.body.appendChild(s);
+    requestAnimationFrame(()=>{ s.style.transform = `translateY(105vh) rotate(${Math.random()*360}deg)`; s.style.opacity="0"; });
+    setTimeout(()=>s.remove(), 1700);
+    if(++n>26) clearInterval(iv);
+  }, 70);
+}
+
+/* ================= SOUND ================= */
+let actx = null;
+function beep(freq){
+  try{
+    actx = actx || new (window.AudioContext||window.webkitAudioContext)();
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.frequency.value = freq; o.connect(g); g.connect(actx.destination);
+    g.gain.setValueAtTime(0.12, actx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime+0.18);
+    o.start(); o.stop(actx.currentTime+0.2);
+  }catch(e){}
+}
+
+/* ================= BUTTONS ================= */
+$("btnCreate").onclick = createRoom;
+$("btnJoin").onclick = ()=>joinRoom($("joinCode").value);
+$("btnBot").onclick = startBotRace;
+$("btnStart").onclick = ()=>{ if(state.oppJoined) hostStartRace(); };
+$("btnLeaveLobby").onclick = ()=>location.href = location.pathname;
+$("btnHome").onclick = ()=>location.href = location.pathname;
+$("btnCopyCode").onclick = ()=>{
+  navigator.clipboard.writeText(state.roomCode||"").then(()=>toast("Code copy hoyeche 📋"));
+};
+$("btnCopyLink").onclick = ()=>{
+  const link = location.origin + location.pathname + "?room=" + (state.roomCode||"");
+  navigator.clipboard.writeText(link).then(()=>toast("Invite link copy hoyeche 🔗 Friend ke pathao!"));
+};
+$("btnRematch").onclick = ()=>{
+  if(state.mode==="bot"){ startBotRace(); }
+  else if(state.isHost){ hostStartRace(); }
+  else if(state.conn && state.conn.open){
+    state.conn.send({type:"rematch_request"});
+    $("resultStatus").textContent = "Host ke rematch request pathano hoyeche... ⏳";
+  }
+};
+$("joinCode").addEventListener("keydown", e=>{ if(e.key==="Enter") $("btnJoin").click(); });
+window.addEventListener("beforeunload", ()=>{
+  if(state.conn && state.conn.open) try{ state.conn.send({type:"leave"}); }catch(e){}
+});
+
+// Auto-join from invite link ?room=CODE
+(function(){
+  const code = new URLSearchParams(location.search).get("room");
+  if(code){ $("joinCode").value = code.toUpperCase(); toast("Invite link theke eshecho! Naam diye Join Room chapao 👇"); }
+})();
+</script>
+</body>
+</html>

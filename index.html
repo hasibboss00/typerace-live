@@ -222,6 +222,7 @@ function pickText(){
    P2P/WebRTC BD mobile network e atke jeto — WSS shob jaygay chole. */
 const TOPIC_PREFIX = "typerace-live-v2";
 const MQ_BROKERS = [
+  "wss://mqtt.eclipseprojects.io:443/mqtt",
   "wss://broker.emqx.io:8084/mqtt",
   "wss://broker.hivemq.com:8884/mqtt",
   "wss://test.mosquitto.org:8081/mqtt"
@@ -317,7 +318,7 @@ function mqConnect(onReady){
         $("homeStatus").textContent = "Server e connect hote parlo na 😕 Internet check kore abar Create Room chapao.";
       }
     }
-  }, 13000);
+  }, 9000);
 }
 function onPresence(raw){
   if(state.isHost) return;
